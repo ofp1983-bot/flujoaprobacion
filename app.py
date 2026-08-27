@@ -5,7 +5,11 @@ import os
 import io
 import requests
 from requests.auth import HTTPBasicAuth
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# Definimos la zona horaria para Colombia (UTC-5)
+ZONA_COL = timezone(timedelta(hours=-5))
+
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
@@ -260,7 +264,7 @@ if token:
                 elif decision == "Rechazar/Devolver" and not observaciones.strip():
                     st.error("Debe ingresar una observación para justificar la devolución.")
                 else:
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
                     estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
                     
                     c.execute("""UPDATE firmas_flujo 
@@ -308,7 +312,7 @@ else:
                 if exito_subida:
                     conn = sqlite3.connect(DB_FILE)
                     c = conn.cursor()
-                    fecha_creacion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    fecha_creacion = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
                     
                     c.execute("""INSERT INTO documentos VALUES (?, ?, ?, ?, 'REVISION', ?, 0, ?, ?, ?, ?)""",
                               (doc_id, archivo.name, nombre_guardado, observacion, num_revisores, 
