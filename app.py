@@ -24,7 +24,7 @@ NC_PASS = "HXkBb-gRGkC-rjnAJ-LPtZ6-9pnPi" # Se recomienda usar una Contraseña d
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 
 # URL base para los enlaces (Cámbiala por la URL de tu app en producción)
-BASE_URL = "http://localhost:8501"
+BASE_URL = "https://flujoaprobacion.streamlit.app/"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS
