@@ -18,13 +18,13 @@ from pypdf import PdfWriter, PdfReader
 DB_FILE = "flujo_documental.db"
 
 # CONFIGURACIÓN NEXTCLOUD (Ajusta estos valores a tu entorno real)
-NC_URL = "https://cloud.insdeportescajica.gov.co/"
+NC_URL = "https://cloud.insdeportescajica.gov.co/apps/files/files/3258572?dir=/DIRECCI%C3%93N%201/Para%20aprobacion"
 NC_USER = "gdocumental@insdeportescajica.gov.co"
 NC_PASS = "HXkBb-gRGkC-rjnAJ-LPtZ6-9pnPi" # Se recomienda usar una Contraseña de Aplicación
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 
 # URL base para los enlaces (Cámbiala por la URL de tu app en producción)
-BASE_URL = "https://flujoaprobacion.streamlit.app/"
+BASE_URL = "http://localhost:8501"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS
