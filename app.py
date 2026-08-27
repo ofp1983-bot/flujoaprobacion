@@ -11,6 +11,10 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from pypdf import PdfWriter, PdfReader
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib import colors
 
 # ==========================================
 # CONFIGURACIÓN GENERAL Y CREDENCIALES
@@ -108,7 +112,19 @@ def generar_hoja_control_temporal(doc_id):
 
     temp_hoja = f"hoja_control_{doc_id}.pdf"
     doc = SimpleDocTemplate(temp_hoja, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    
+    # --- ESTILOS DE TEXTO ---
     styles = getSampleStyleSheet()
+    
+    # Creamos un estilo específico para el texto dentro de la tabla (salto de línea automático y centrado)
+    estilo_celda = ParagraphStyle(
+        'EstiloCelda',
+        parent=styles['Normal'],
+        fontSize=7,
+        alignment=TA_CENTER,
+        leading=8 # Espaciado entre líneas
+    )
+
     story = []
 
     story.append(Paragraph("<b>MATRIZ DE CONTROL Y APROBACIÓN DOCUMENTAL</b>", styles['Title']))
@@ -117,17 +133,37 @@ def generar_hoja_control_temporal(doc_id):
     story.append(Paragraph(f"<b>Nota inicial:</b> {doc_info[1]}", styles['Normal']))
     story.append(Spacer(1, 15))
 
-    # Encabezados con la columna Cargo
+    # --- ENCABEZADOS (Pueden ir como texto plano porque sabemos que caben) ---
     data = [["Rol", "Nombre Completo", "Cargo", "Correo", "Estado", "Fecha y Hora"]]
     
-    # 1. Agregamos al Elaborador como la primera fila
-    data.append(["Elaborador", doc_info[2], doc_info[3], doc_info[4], "ELABORADO", doc_info[5]])
+    # Función auxiliar para convertir cualquier texto en un Párrafo ajustable
+    def ajustar_texto(texto):
+        return Paragraph(str(texto), estilo_celda)
 
-    # 2. Agregamos al resto de los actores
+    # 1. Agregamos al Elaborador convirtiendo cada campo a Paragraph
+    data.append([
+        ajustar_texto("Elaborador"), 
+        ajustar_texto(doc_info[2]), 
+        ajustar_texto(doc_info[3]), 
+        ajustar_texto(doc_info[4]), 
+        ajustar_texto("ELABORADO"), 
+        ajustar_texto(doc_info[5])
+    ])
+
+    # 2. Agregamos al resto de los actores (Revisores y Aprobadores)
     for f in firmas:
-        data.append([f[0], f[1], f[2], f[3], f[4], f[5]])
+        data.append([
+            ajustar_texto(f[0]), 
+            ajustar_texto(f[1]), 
+            ajustar_texto(f[2]), 
+            ajustar_texto(f[3]), 
+            ajustar_texto(f[4]), 
+            ajustar_texto(f[5])
+        ])
 
-    t = Table(data, colWidths=[65, 110, 100, 110, 65, 80])
+    # Ajustamos un poco los anchos (Total ~ 552 puntos, que es el espacio útil de una hoja carta)
+    t = Table(data, colWidths=[60, 110, 110, 120, 65, 87])
+    
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A365D")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
@@ -135,14 +171,13 @@ def generar_hoja_control_temporal(doc_id):
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0,0), (-1,0), 6),
         ('GRID', (0,0), (-1,-1), 1, colors.grey),
-        ('FONTSIZE', (0,0), (-1,-1), 7),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), # Asegura que el texto quede centrado verticalmente
     ]))
+    
     story.append(t)
     doc.build(story)
     
     return temp_hoja
-
 def procesar_cierre_documento(doc_id_input, doc_nombre_nextcloud):
     ruta_hoja_temporal = generar_hoja_control_temporal(doc_id_input)
     
