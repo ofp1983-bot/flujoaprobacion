@@ -18,7 +18,7 @@ from pypdf import PdfWriter, PdfReader
 DB_FILE = "flujo_documental.db"
 
 # CONFIGURACIÓN NEXTCLOUD (Ajusta estos valores a tu entorno real)
-NC_URL = "https://cloud.insdeportescajica.gov.co"
+NC_URL = "https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1"
 NC_USER = "gdocumental@insdeportescajica.gov.co"
 NC_PASS = "nisZG-FgTYd-QfiYy-6qMik-GrMjC" # Se recomienda usar una Contraseña de Aplicación
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
