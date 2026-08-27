@@ -65,10 +65,23 @@ init_db()
 # FUNCIONES DE NEXTCLOUD (WEBDAV)
 # ==========================================
 def subir_a_nextcloud(archivo_bytes, nombre_archivo):
-    """Sube un archivo a Nextcloud usando WebDAV (PUT)"""
+    """Sube un archivo a Nextcloud usando WebDAV (PUT) e imprime errores"""
     url = f"{NC_URL}/{nombre_archivo}"
-    respuesta = requests.put(url, data=archivo_bytes, auth=AUTH)
-    return respuesta.status_code in [201, 204]
+    try:
+        respuesta = requests.put(url, data=archivo_bytes, auth=AUTH)
+        
+        # Si la respuesta es exitosa (201 Created o 204 No Content)
+        if respuesta.status_code in [201, 204]:
+            return True
+        else:
+            # Si falla, mostramos el error exacto en la interfaz de Streamlit
+            st.error(f"Fallo en Nextcloud - Código HTTP {respuesta.status_code}: {respuesta.text}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        # Esto captura errores de red (ej. si el servidor está caído o la URL está mal escrita)
+        st.error(f"Error de conexión con el servidor: {e}")
+        return False
 
 def descargar_de_nextcloud(nombre_archivo):
     """Descarga un archivo desde Nextcloud en memoria (GET)"""
