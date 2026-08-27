@@ -18,13 +18,13 @@ from pypdf import PdfWriter, PdfReader
 DB_FILE = "flujo_documental.db"
 
 # CONFIGURACIÓN NEXTCLOUD (Ajusta estos valores a tu entorno real)
-NC_URL = "https://tu-servidor-nextcloud.com/remote.php/webdav/Directorio_Aprobaciones"
-NC_USER = "tu_usuario"
-NC_PASS = "tu_app_password" # Se recomienda usar una Contraseña de Aplicación
+NC_URL = "https://cloud.insdeportescajica.gov.co/"
+NC_USER = "gdocumental@insdeportescajica.gov.co"
+NC_PASS = "HXkBb-gRGkC-rjnAJ-LPtZ6-9pnPi" # Se recomienda usar una Contraseña de Aplicación
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 
 # URL base para los enlaces (Cámbiala por la URL de tu app en producción)
-BASE_URL = "http://localhost:8501"
+BASE_URL = "https://flujoaprobacion.streamlit.app/"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS
