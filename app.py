@@ -134,7 +134,8 @@ def generar_hoja_control_temporal(doc_id):
     story.append(Paragraph("<b>MATRIZ DE CONTROL Y APROBACIÓN DOCUMENTAL</b>", styles['Title']))
     story.append(Spacer(1, 12))
     story.append(Paragraph(f"<b>Documento:</b> {doc_info[0]}", styles['Normal']))
-    story.append(Paragraph(f"<b>Nota inicial:</b> {doc_info[1]}", styles['Normal']))
+    nota_formateada = doc_info[1].replace('\n', '<br/>')
+    story.append(Paragraph(f"<b>Notas del flujo:</b><br/>{nota_formateada}", styles['Normal']))
     story.append(Spacer(1, 15))
 
     # --- ENCABEZADOS (Pueden ir como texto plano porque sabemos que caben) ---
@@ -488,6 +489,79 @@ else:
             else:
                 st.error("Documento no encontrado. Verifica el ID.")
             conn.close()
+            # ... (Código anterior donde muestras la tabla con df_firmas y el botón de Excel) ...
+
+                # --- 1. LÓGICA SI ESTÁ EN REVISIÓN ---
+                if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
+                    st.success("✅ Todos los revisores han aprobado el documento.")
+                    st.subheader("Paso 2: Configurar Aprobadores")
+                    # ... (resto de tu código de generar enlaces aprobadores)
+
+                # --- 2. LÓGICA SI ESTÁ EN APROBACIÓN ---
+                elif doc[2] == 'APROBACION':
+                    c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'APROBADOR' AND decision = 'APROBADO'", (doc_id_input,))
+                    apr_aprobados = c.fetchone()[0]
+                    c.execute("SELECT total_aprobadores FROM documentos WHERE id = ?", (doc_id_input,))
+                    tot_apr = c.fetchone()[0]
+                    # ... (resto de tu código de generar documento final)
+
+                # --- 3. NUEVA LÓGICA: REINICIO DE FLUJO SI FUE RECHAZADO ---
+                elif doc[2] in ['RECHAZADO_REV', 'RECHAZADO_APR']:
+                    st.error("❌ Este documento fue rechazado. El flujo se encuentra detenido.")
+                    st.divider()
+                    st.subheader("🔄 Reiniciar Flujo (Subir Correcciones)")
+                    st.info(f"Al reiniciar, se conservará el ID **{doc_id_input}** para mantener toda la trazabilidad histórica.")
+                    
+                    nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"])
+                    nueva_obs = st.text_area("Nota sobre los ajustes realizados:")
+                    nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3])
+                    
+                    if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
+                        if nuevo_archivo and nueva_obs:
+                            # Se le añade un timestamp al nombre para no sobrescribir el archivo original en Nextcloud
+                            marca_tiempo = datetime.now(ZONA_COL).strftime("%H%M%S")
+                            nuevo_nombre_nc = f"{doc_id_input}_v{marca_tiempo}_{nuevo_archivo.name}"
+                            
+                            with st.spinner("Subiendo corrección a Nextcloud..."):
+                                exito = subir_a_nextcloud(nuevo_archivo.getvalue(), nuevo_nombre_nc)
+                            
+                            if exito:
+                                # 1. Convertir firmas anteriores en histórico
+                                c.execute("""UPDATE firmas_flujo 
+                                             SET decision = decision || ' (Histórico)' 
+                                             WHERE doc_id = ? AND decision NOT LIKE '%(Histórico)'""", (doc_id_input,))
+                                
+                                # 2. Generar nuevos tokens
+                                tokens_reinicio = []
+                                import uuid
+                                for _ in range(nuevos_rev):
+                                    tok = str(uuid.uuid4())
+                                    c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, decision) 
+                                                 VALUES (?, ?, 'REVISOR', 'PENDIENTE')""", (doc_id_input, tok))
+                                    tokens_reinicio.append(tok)
+                                
+                                # 3. Actualizar la tabla de documentos
+                                # Añadimos la nueva nota a la anterior para mantener el registro
+                                obs_actualizada = f"{doc[2]} \n\n[REINICIO {datetime.now(ZONA_COL).strftime('%d/%m/%Y')}]: {nueva_obs}"
+                                
+                                c.execute("""UPDATE documentos 
+                                             SET estado = 'REVISION', 
+                                                 nombre_archivo = ?, 
+                                                 ruta_archivo = ?, 
+                                                 observacion_inicial = ?, 
+                                                 total_revisores = ? 
+                                             WHERE id = ?""", 
+                                          (nuevo_archivo.name, nuevo_nombre_nc, obs_actualizada, nuevos_rev, doc_id_input))
+                                
+                                conn.commit()
+                                st.success("¡Flujo reiniciado exitosamente!")
+                                st.info("Envía estos nuevos enlaces a los revisores:")
+                                for tok in tokens_reinicio:
+                                    st.code(f"{BASE_URL}/?token={tok}", language="text")
+                            else:
+                                st.error("Error al subir el nuevo documento a Nextcloud.")
+                        else:
+                            st.warning("Debes adjuntar el documento corregido y escribir una nota.")
 
     elif menu == "3. Documentos Finalizados":
         st.header("Repositorio de Documentos Completados")
