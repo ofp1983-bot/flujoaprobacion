@@ -350,11 +350,98 @@ else:
             if doc:
                 st.write(f"**Archivo original:** {doc[0]} | **Estado Actual:** `{doc[2]}`")
                 
-                # Mostrar firmas de revisores/aprobadores
-                c.execute("SELECT rol, nombre, cargo, decision, fecha_hora FROM firmas_flujo WHERE doc_id = ?", (doc_id_input,))
+                # Mostrar firmas de revisores/aprobadores (AQUÍ SE AÑADE 'observacion')
+                c.execute("SELECT rol, nombre, cargo, decision, observacion, fecha_hora FROM firmas_flujo WHERE doc_id = ?", (doc_id_input,))
                 firmas = c.fetchall()
                 if firmas:
-                    st.table(firmas)
+                    import pandas as pd
+                    # Usamos pandas para nombrar las columnas y limpiar visualmente los nulos
+                    df_firmas = pd.DataFrame(firmas, columns=["Rol", "Nombre", "Cargo", "Decisión", "Observación", "Fecha y Hora"])
+                    df_firmas["Observación"] = df_firmas["Observación"].fillna("Sin observaciones")
+                    st.dataframe(df_firmas, use_container_width=True, hide_index=True)
+
+                # --- BOTÓN PARA GENERAR BITÁCORA EXCEL ---
+                    st.write("---")
+                    st.subheader("Control y Seguimiento")
+                    
+                    if st.button("Generar Bitácora de Trazabilidad (Excel)"):
+                        import io
+                        from openpyxl import Workbook
+                        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                        from openpyxl.utils.dataframe import dataframe_to_rows
+
+                        # 1. Recuperar datos del elaborador
+                        c.execute("""SELECT nombre_elaborador, cargo_elaborador, 
+                                     fecha_creacion FROM documentos WHERE id = ?""", (doc_id_input,))
+                        elab_data = c.fetchone()
+                        
+                        # 2. Construir la data unificada
+                        historial = [{
+                            'Rol': 'Elaborador',
+                            'Nombre': elab_data[0],
+                            'Cargo': elab_data[1],
+                            'Decisión': 'ELABORADO',
+                            'Observación': doc[2], # Estado del documento o nota inicial
+                            'Fecha y Hora': elab_data[2]
+                        }]
+                        
+                        for f in firmas:
+                            historial.append({
+                                'Rol': f[0], 'Nombre': f[1], 'Cargo': f[2],
+                                'Decisión': f[3], 'Observación': f[4] if f[4] else "",
+                                'Fecha y Hora': f[5]
+                            })
+                            
+                        df_historial = pd.DataFrame(historial)
+                        
+                        # 3. Crear el libro de Excel y darle formato profesional
+                        wb = Workbook()
+                        ws = wb.active
+                        ws.title = f"Trazabilidad_{doc_id_input}"
+                        
+                        ws.merge_cells('A1:F1')
+                        title_cell = ws['A1']
+                        title_cell.value = f"BITÁCORA DE TRAZABILIDAD DOCUMENTAL - ID: {doc_id_input}"
+                        title_cell.font = Font(bold=True, color="FFFFFF", size=13)
+                        title_cell.fill = PatternFill(start_color="1A365D", fill_type="solid")
+                        title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                        
+                        ws.append([]) # Fila vacía
+                        
+                        for r in dataframe_to_rows(df_historial, index=False, header=True):
+                            ws.append(r)
+                            
+                        # Bordes y anchos
+                        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
+                                             top=Side(style='thin'), bottom=Side(style='thin'))
+                        header_fill = PatternFill(start_color="D9E1F2", fill_type="solid")
+                        
+                        for col_idx, col_cells in enumerate(ws.iter_cols(min_row=3, max_row=ws.max_row, min_col=1, max_col=6)):
+                            for row_idx, cell in enumerate(col_cells):
+                                cell.border = thin_border
+                                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                                if row_idx == 0:
+                                    cell.font = Font(bold=True)
+                                    cell.fill = header_fill
+                                    
+                        ws.column_dimensions['A'].width = 12
+                        ws.column_dimensions['B'].width = 25
+                        ws.column_dimensions['C'].width = 30
+                        ws.column_dimensions['D'].width = 12
+                        ws.column_dimensions['E'].width = 40
+                        ws.column_dimensions['F'].width = 18
+
+                        # 4. Guardar en memoria y habilitar descarga
+                        excel_io = io.BytesIO()
+                        wb.save(excel_io)
+                        excel_io.seek(0)
+                        
+                        st.download_button(
+                            label="📥 Descargar Bitácora (.xlsx)",
+                            data=excel_io,
+                            file_name=f"Bitacora_Trazabilidad_{doc_id_input}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
 
                 # Verificar Revisores
                 c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'REVISOR' AND decision = 'APROBADO'", (doc_id_input,))
