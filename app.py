@@ -343,80 +343,62 @@ else:
         doc_id_input = st.text_input("Ingresa el ID del Documento (Ej: abc123df):")
         
         if doc_id_input:
-            conn = sqlite3.connect(DB_FILE)
-            c = conn.cursor()
-            c.execute("SELECT nombre_archivo, ruta_archivo, estado, total_revisores FROM documentos WHERE id = ?", (doc_id_input,))
-            doc = c.fetchone()
+            # Usar 'with' soluciona el error: mantiene la base de datos abierta 
+            # de forma segura y la cierra automáticamente al terminar el bloque.
+            with sqlite3.connect(DB_FILE) as conn:
+                c = conn.cursor()
+                # Traemos 'observacion_inicial' (doc[4]) para mantener el registro
+                c.execute("SELECT nombre_archivo, ruta_archivo, estado, total_revisores, observacion_inicial FROM documentos WHERE id = ?", (doc_id_input,))
+                doc = c.fetchone()
 
-            if doc:
-                st.write(f"**Archivo original:** {doc[0]} | **Estado Actual:** `{doc[2]}`")
-                
-                # Mostrar firmas de revisores/aprobadores (AQUÍ SE AÑADE 'observacion')
-                c.execute("SELECT rol, nombre, cargo, decision, observacion, fecha_hora FROM firmas_flujo WHERE doc_id = ?", (doc_id_input,))
-                firmas = c.fetchall()
-                if firmas:
-                    import pandas as pd
-                    # Usamos pandas para nombrar las columnas y limpiar visualmente los nulos
-                    df_firmas = pd.DataFrame(firmas, columns=["Rol", "Nombre", "Cargo", "Decisión", "Observación", "Fecha y Hora"])
-                    df_firmas["Observación"] = df_firmas["Observación"].fillna("Sin observaciones")
-                    st.dataframe(df_firmas, use_container_width=True, hide_index=True)
-
-                # --- BOTÓN PARA GENERAR BITÁCORA EXCEL ---
-                    st.write("---")
-                    st.subheader("Control y Seguimiento")
+                if doc:
+                    st.write(f"**Archivo original:** {doc[0]} | **Estado Actual:** `{doc[2]}`")
                     
-                    if st.button("Generar Bitácora de Trazabilidad (Excel)"):
+                    # ---------------- 1. MOSTRAR TABLA DE FIRMAS Y EXCEL ----------------
+                    c.execute("SELECT rol, nombre, cargo, decision, observacion, fecha_hora FROM firmas_flujo WHERE doc_id = ?", (doc_id_input,))
+                    firmas = c.fetchall()
+                    
+                    if firmas:
+                        import pandas as pd
+                        df_firmas = pd.DataFrame(firmas, columns=["Rol", "Nombre", "Cargo", "Decisión", "Observación", "Fecha y Hora"])
+                        df_firmas["Observación"] = df_firmas["Observación"].fillna("Sin observaciones")
+                        st.dataframe(df_firmas, use_container_width=True, hide_index=True)
+
+                        st.write("---")
+                        st.subheader("Control y Seguimiento")
+                        
+                        # Construir archivo Excel en memoria para evitar bugs en Streamlit
+                        c.execute("SELECT nombre_elaborador, cargo_elaborador, fecha_creacion FROM documentos WHERE id = ?", (doc_id_input,))
+                        elab_data = c.fetchone()
+                        
                         import io
                         from openpyxl import Workbook
                         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
                         from openpyxl.utils.dataframe import dataframe_to_rows
-
-                        # 1. Recuperar datos del elaborador
-                        c.execute("""SELECT nombre_elaborador, cargo_elaborador, 
-                                     fecha_creacion FROM documentos WHERE id = ?""", (doc_id_input,))
-                        elab_data = c.fetchone()
                         
-                        # 2. Construir la data unificada
                         historial = [{
-                            'Rol': 'Elaborador',
-                            'Nombre': elab_data[0],
-                            'Cargo': elab_data[1],
-                            'Decisión': 'ELABORADO',
-                            'Observación': doc[2], # Estado del documento o nota inicial
-                            'Fecha y Hora': elab_data[2]
+                            'Rol': 'Elaborador', 'Nombre': elab_data[0], 'Cargo': elab_data[1],
+                            'Decisión': 'ELABORADO', 'Observación': 'Inicio del flujo / Envío a revisión', 'Fecha y Hora': elab_data[2]
                         }]
-                        
                         for f in firmas:
-                            historial.append({
-                                'Rol': f[0], 'Nombre': f[1], 'Cargo': f[2],
-                                'Decisión': f[3], 'Observación': f[4] if f[4] else "",
-                                'Fecha y Hora': f[5]
-                            })
+                            historial.append({'Rol': f[0], 'Nombre': f[1], 'Cargo': f[2], 'Decisión': f[3], 'Observación': f[4] if f[4] else "", 'Fecha y Hora': f[5]})
                             
-                        df_historial = pd.DataFrame(historial)
-                        
-                        # 3. Crear el libro de Excel y darle formato profesional
                         wb = Workbook()
                         ws = wb.active
                         ws.title = f"Trazabilidad_{doc_id_input}"
-                        
                         ws.merge_cells('A1:F1')
                         title_cell = ws['A1']
                         title_cell.value = f"BITÁCORA DE TRAZABILIDAD DOCUMENTAL - ID: {doc_id_input}"
                         title_cell.font = Font(bold=True, color="FFFFFF", size=13)
                         title_cell.fill = PatternFill(start_color="1A365D", fill_type="solid")
                         title_cell.alignment = Alignment(horizontal="center", vertical="center")
+                        ws.append([])
                         
-                        ws.append([]) # Fila vacía
-                        
-                        for r in dataframe_to_rows(df_historial, index=False, header=True):
+                        for r in dataframe_to_rows(pd.DataFrame(historial), index=False, header=True):
                             ws.append(r)
                             
-                        # Bordes y anchos
-                        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), 
-                                             top=Side(style='thin'), bottom=Side(style='thin'))
+                        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
                         header_fill = PatternFill(start_color="D9E1F2", fill_type="solid")
-                        
                         for col_idx, col_cells in enumerate(ws.iter_cols(min_row=3, max_row=ws.max_row, min_col=1, max_col=6)):
                             for row_idx, cell in enumerate(col_cells):
                                 cell.border = thin_border
@@ -432,138 +414,108 @@ else:
                         ws.column_dimensions['E'].width = 40
                         ws.column_dimensions['F'].width = 18
 
-                        # 4. Guardar en memoria y habilitar descarga
                         excel_io = io.BytesIO()
                         wb.save(excel_io)
                         excel_io.seek(0)
                         
                         st.download_button(
-                            label="📥 Descargar Bitácora (.xlsx)",
+                            label="📥 Descargar Bitácora de Trazabilidad (.xlsx)",
                             data=excel_io,
                             file_name=f"Bitacora_Trazabilidad_{doc_id_input}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
 
-                # Verificar Revisores
-                c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'REVISOR' AND decision = 'APROBADO'", (doc_id_input,))
-                rev_aprobados = c.fetchone()[0]
+                    # ---------------- 2. EVALUAR ESTADOS Y RUTAS ----------------
+                    st.write("---")
+                    c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'REVISOR' AND decision = 'APROBADO'", (doc_id_input,))
+                    rev_aprobados = c.fetchone()[0]
 
-                if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
-                    st.success("✅ Todos los revisores han aprobado el documento.")
-                    st.subheader("Paso 2: Configurar Aprobadores")
-                    num_apr = st.number_input("Número de Aprobadores requeridos:", min_value=1, max_value=10, value=1)
-                    
-                    if st.button("Generar Enlaces para Aprobadores"):
-                        tokens_apr = []
-                        for _ in range(num_apr):
-                            tok = str(uuid.uuid4())
-                            c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, decision) 
-                                         VALUES (?, ?, 'APROBADOR', 'PENDIENTE')""", (doc_id_input, tok))
-                            tokens_apr.append(tok)
+                    if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
+                        st.success("✅ Todos los revisores han aprobado el documento.")
+                        st.subheader("Paso 2: Configurar Aprobadores")
+                        num_apr = st.number_input("Número de Aprobadores requeridos:", min_value=1, max_value=10, value=1)
                         
-                        c.execute("UPDATE documentos SET estado = 'APROBACION', total_aprobadores = ? WHERE id = ?", (num_apr, doc_id_input))
-                        conn.commit()
-                        st.success("Enlaces de aprobación generados con éxito:")
-                        for tok in tokens_apr:
-                            st.code(f"{BASE_URL}/?token={tok}", language="text")
+                        if st.button("Generar Enlaces para Aprobadores"):
+                            tokens_apr = []
+                            import uuid
+                            for _ in range(num_apr):
+                                tok = str(uuid.uuid4())
+                                c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, decision) VALUES (?, ?, 'APROBADOR', 'PENDIENTE')", (doc_id_input, tok))
+                                tokens_apr.append(tok)
                             
-                elif doc[2] == 'APROBACION':
-                    c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'APROBADOR' AND decision = 'APROBADO'", (doc_id_input,))
-                    apr_aprobados = c.fetchone()[0]
-                    c.execute("SELECT total_aprobadores FROM documentos WHERE id = ?", (doc_id_input,))
-                    tot_apr = c.fetchone()[0]
-
-                    if apr_aprobados == tot_apr:
-                        st.success("🎉 ¡Todos los aprobadores han firmado! El flujo está listo para cerrarse.")
-                        if st.button("Generar Documento Final con Hoja de Firmas"):
-                            with st.spinner("Descargando, uniendo PDFs y subiendo a Nextcloud..."):
-                                pdf_final_bytes, nombre_final_nc = procesar_cierre_documento(doc_id_input, doc[1])
+                            c.execute("UPDATE documentos SET estado = 'APROBACION', total_aprobadores = ? WHERE id = ?", (num_apr, doc_id_input))
+                            conn.commit()
+                            st.success("Enlaces de aprobación generados con éxito:")
+                            for tok in tokens_apr:
+                                st.code(f"{BASE_URL}/?token={tok}", language="text")
                                 
-                                if pdf_final_bytes:
-                                    c.execute("UPDATE documentos SET estado = 'COMPLETADO' WHERE id = ?", (doc_id_input,))
+                    elif doc[2] == 'APROBACION':
+                        c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'APROBADOR' AND decision = 'APROBADO'", (doc_id_input,))
+                        apr_aprobados = c.fetchone()[0]
+                        c.execute("SELECT total_aprobadores FROM documentos WHERE id = ?", (doc_id_input,))
+                        tot_apr = c.fetchone()[0]
+
+                        if apr_aprobados == tot_apr:
+                            st.success("🎉 ¡Todos los aprobadores han firmado! El flujo está listo para cerrarse.")
+                            if st.button("Generar Documento Final con Hoja de Firmas"):
+                                with st.spinner("Descargando, uniendo PDFs y subiendo a Nextcloud..."):
+                                    pdf_final_bytes, nombre_final_nc = procesar_cierre_documento(doc_id_input, doc[1])
+                                    if pdf_final_bytes:
+                                        c.execute("UPDATE documentos SET estado = 'COMPLETADO' WHERE id = ?", (doc_id_input,))
+                                        conn.commit()
+                                        st.success(f"Documento final guardado en Nextcloud como: `{nombre_final_nc}`")
+                                        st.download_button("📥 Descargar PDF Final", data=pdf_final_bytes, file_name=nombre_final_nc, mime="application/pdf")
+                                    else:
+                                        st.error("Error obteniendo el archivo original desde Nextcloud.")
+
+                    elif doc[2] in ['RECHAZADO_REV', 'RECHAZADO_APR']:
+                        st.error("❌ Este documento fue rechazado. El flujo se encuentra detenido.")
+                        st.subheader("🔄 Reiniciar Flujo (Subir Correcciones)")
+                        st.info(f"Al reiniciar, se conservará el ID **{doc_id_input}** para mantener toda la trazabilidad histórica.")
+                        
+                        nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"])
+                        nueva_obs = st.text_area("Nota sobre los ajustes realizados:")
+                        nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3])
+                        
+                        if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
+                            if nuevo_archivo and nueva_obs:
+                                marca_tiempo = datetime.now(ZONA_COL).strftime("%H%M%S")
+                                nuevo_nombre_nc = f"{doc_id_input}_v{marca_tiempo}_{nuevo_archivo.name}"
+                                
+                                with st.spinner("Subiendo corrección a Nextcloud..."):
+                                    exito = subir_a_nextcloud(nuevo_archivo.getvalue(), nuevo_nombre_nc)
+                                
+                                if exito:
+                                    # Convertir firmas anteriores en histórico
+                                    c.execute("UPDATE firmas_flujo SET decision = decision || ' (Histórico)' WHERE doc_id = ? AND decision NOT LIKE '%(Histórico)'", (doc_id_input,))
+                                    
+                                    tokens_reinicio = []
+                                    import uuid
+                                    for _ in range(nuevos_rev):
+                                        tok = str(uuid.uuid4())
+                                        c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, decision) VALUES (?, ?, 'REVISOR', 'PENDIENTE')", (doc_id_input, tok))
+                                        tokens_reinicio.append(tok)
+                                    
+                                    # Concatenamos la nueva nota utilizando la observación histórica previa (doc[4]) y usamos salto de línea HTML para ReportLab
+                                    obs_actualizada = f"{doc[4]} <br/><br/>[REINICIO {datetime.now(ZONA_COL).strftime('%d/%m/%Y')}]: {nueva_obs}"
+                                    
+                                    c.execute("""UPDATE documentos 
+                                                 SET estado = 'REVISION', nombre_archivo = ?, ruta_archivo = ?, 
+                                                     observacion_inicial = ?, total_revisores = ? 
+                                                 WHERE id = ?""", 
+                                              (nuevo_archivo.name, nuevo_nombre_nc, obs_actualizada, nuevos_rev, doc_id_input))
+                                    
                                     conn.commit()
-                                    st.success(f"Documento final generado y guardado en Nextcloud como: `{nombre_final_nc}`")
-                                    st.download_button("📥 Descargar PDF Final", data=pdf_final_bytes, file_name=nombre_final_nc, mime="application/pdf")
+                                    st.success("¡Flujo reiniciado exitosamente!")
+                                    st.info("Envía estos nuevos enlaces a los revisores:")
+                                    for tok in tokens_reinicio:
+                                        st.code(f"{BASE_URL}/?token={tok}", language="text")
                                 else:
-                                    st.error("Hubo un error obteniendo el archivo original desde Nextcloud.")
-            else:
-                st.error("Documento no encontrado. Verifica el ID.")
-            conn.close()
-            # ... (Código anterior donde muestras la tabla con df_firmas y el botón de Excel) ...
-
-                # --- 1. LÓGICA SI ESTÁ EN REVISIÓN ---
-            if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
-                    st.success("✅ Todos los revisores han aprobado el documento.")
-                    st.subheader("Paso 2: Configurar Aprobadores")
-                    # ... (resto de tu código de generar enlaces aprobadores)
-
-                # --- 2. LÓGICA SI ESTÁ EN APROBACIÓN ---
-            elif doc[2] == 'APROBACION':
-                    c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'APROBADOR' AND decision = 'APROBADO'", (doc_id_input,))
-                    apr_aprobados = c.fetchone()[0]
-                    c.execute("SELECT total_aprobadores FROM documentos WHERE id = ?", (doc_id_input,))
-                    tot_apr = c.fetchone()[0]
-                    # ... (resto de tu código de generar documento final)
-
-                # --- 3. NUEVA LÓGICA: REINICIO DE FLUJO SI FUE RECHAZADO ---
-            elif doc[2] in ['RECHAZADO_REV', 'RECHAZADO_APR']:
-                    st.error("❌ Este documento fue rechazado. El flujo se encuentra detenido.")
-                    st.divider()
-                    st.subheader("🔄 Reiniciar Flujo (Subir Correcciones)")
-                    st.info(f"Al reiniciar, se conservará el ID **{doc_id_input}** para mantener toda la trazabilidad histórica.")
-                    
-                    nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"])
-                    nueva_obs = st.text_area("Nota sobre los ajustes realizados:")
-                    nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3])
-                    
-                    if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
-                        if nuevo_archivo and nueva_obs:
-                            # Se le añade un timestamp al nombre para no sobrescribir el archivo original en Nextcloud
-                            marca_tiempo = datetime.now(ZONA_COL).strftime("%H%M%S")
-                            nuevo_nombre_nc = f"{doc_id_input}_v{marca_tiempo}_{nuevo_archivo.name}"
-                            
-                            with st.spinner("Subiendo corrección a Nextcloud..."):
-                                exito = subir_a_nextcloud(nuevo_archivo.getvalue(), nuevo_nombre_nc)
-                            
-                            if exito:
-                                # 1. Convertir firmas anteriores en histórico
-                                c.execute("""UPDATE firmas_flujo 
-                                             SET decision = decision || ' (Histórico)' 
-                                             WHERE doc_id = ? AND decision NOT LIKE '%(Histórico)'""", (doc_id_input,))
-                                
-                                # 2. Generar nuevos tokens
-                                tokens_reinicio = []
-                                import uuid
-                                for _ in range(nuevos_rev):
-                                    tok = str(uuid.uuid4())
-                                    c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, decision) 
-                                                 VALUES (?, ?, 'REVISOR', 'PENDIENTE')""", (doc_id_input, tok))
-                                    tokens_reinicio.append(tok)
-                                
-                                # 3. Actualizar la tabla de documentos
-                                # Añadimos la nueva nota a la anterior para mantener el registro
-                                obs_actualizada = f"{doc[2]} \n\n[REINICIO {datetime.now(ZONA_COL).strftime('%d/%m/%Y')}]: {nueva_obs}"
-                                
-                                c.execute("""UPDATE documentos 
-                                             SET estado = 'REVISION', 
-                                                 nombre_archivo = ?, 
-                                                 ruta_archivo = ?, 
-                                                 observacion_inicial = ?, 
-                                                 total_revisores = ? 
-                                             WHERE id = ?""", 
-                                          (nuevo_archivo.name, nuevo_nombre_nc, obs_actualizada, nuevos_rev, doc_id_input))
-                                
-                                conn.commit()
-                                st.success("¡Flujo reiniciado exitosamente!")
-                                st.info("Envía estos nuevos enlaces a los revisores:")
-                                for tok in tokens_reinicio:
-                                    st.code(f"{BASE_URL}/?token={tok}", language="text")
+                                    st.error("Error al subir el nuevo documento a Nextcloud.")
                             else:
-                                st.error("Error al subir el nuevo documento a Nextcloud.")
-                        else:
-                            st.warning("Debes adjuntar el documento corregido y escribir una nota.")    
-
-                              
+                                st.warning("Debes adjuntar el documento corregido y escribir una nota.")
+                else:
+                    st.error("Documento no encontrado. Verifica el ID.")                             
 
     elif menu == "3. Documentos Finalizados":
         st.header("Repositorio de Documentos Completados")
