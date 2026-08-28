@@ -492,7 +492,7 @@ else:
             # ... (Código anterior donde muestras la tabla con df_firmas y el botón de Excel) ...
 
                 # --- 1. LÓGICA SI ESTÁ EN REVISIÓN ---
-                if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
+            if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
                     st.success("✅ Todos los revisores han aprobado el documento.")
                     st.subheader("Paso 2: Configurar Aprobadores")
                     # ... (resto de tu código de generar enlaces aprobadores)
