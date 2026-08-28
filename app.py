@@ -498,7 +498,7 @@ else:
                     # ... (resto de tu código de generar enlaces aprobadores)
 
                 # --- 2. LÓGICA SI ESTÁ EN APROBACIÓN ---
-                elif doc[2] == 'APROBACION':
+            elif doc[2] == 'APROBACION':
                     c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'APROBADOR' AND decision = 'APROBADO'", (doc_id_input,))
                     apr_aprobados = c.fetchone()[0]
                     c.execute("SELECT total_aprobadores FROM documentos WHERE id = ?", (doc_id_input,))
@@ -506,7 +506,7 @@ else:
                     # ... (resto de tu código de generar documento final)
 
                 # --- 3. NUEVA LÓGICA: REINICIO DE FLUJO SI FUE RECHAZADO ---
-                elif doc[2] in ['RECHAZADO_REV', 'RECHAZADO_APR']:
+            elif doc[2] in ['RECHAZADO_REV', 'RECHAZADO_APR']:
                     st.error("❌ Este documento fue rechazado. El flujo se encuentra detenido.")
                     st.divider()
                     st.subheader("🔄 Reiniciar Flujo (Subir Correcciones)")
