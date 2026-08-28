@@ -2,3 +2,5 @@ streamlit
 reportlab
 pypdf
 requests
+pandas
+openpyxl
