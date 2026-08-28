@@ -103,60 +103,60 @@ def descargar_de_nextcloud(nombre_archivo):
 # FUNCIONES DE GENERACIÓN PDF Y CIERRE
 # ==========================================
 def generar_hoja_control_temporal(doc_id):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT rol, nombre, cargo, correo, decision, fecha_hora FROM firmas_flujo WHERE doc_id = ? ORDER BY id ASC", (doc_id,))
-    firmas = c.fetchall()
-    
-    c.execute("""SELECT nombre_archivo, observacion_inicial, nombre_elaborador, 
-                 cargo_elaborador, correo_elaborador, fecha_creacion 
-                 FROM documentos WHERE id = ?""", (doc_id,))
-    doc_info = c.fetchone()
-    conn.close()
+    # Usamos 'with' para abrir y cerrar la conexión de forma segura
+    with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        
+        # 1. FILTRO APLICADO: Solo traemos firmas cuya decisión sea exactamente 'APROBADO'
+        # Esto excluye todo lo que sea 'RECHAZADO' o que tenga la etiqueta '(Histórico)'
+        c.execute("""SELECT rol, nombre, cargo, correo, decision, fecha_hora 
+                     FROM firmas_flujo 
+                     WHERE doc_id = ? AND decision = 'APROBADO' 
+                     ORDER BY id ASC""", (doc_id,))
+        firmas_definitivas = c.fetchall()
+        
+        # Traemos la información del elaborador
+        c.execute("""SELECT nombre_elaborador, cargo_elaborador, correo_elaborador, fecha_creacion 
+                     FROM documentos WHERE id = ?""", (doc_id,))
+        doc_info = c.fetchone()
 
     temp_hoja = f"hoja_control_{doc_id}.pdf"
     doc = SimpleDocTemplate(temp_hoja, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     
     # --- ESTILOS DE TEXTO ---
     styles = getSampleStyleSheet()
-    
-    # Creamos un estilo específico para el texto dentro de la tabla (salto de línea automático y centrado)
     estilo_celda = ParagraphStyle(
         'EstiloCelda',
         parent=styles['Normal'],
         fontSize=7,
         alignment=TA_CENTER,
-        leading=8 # Espaciado entre líneas
+        leading=8
     )
 
     story = []
 
+    # 2. DISEÑO LIMPIO: Solo dejamos el Título
     story.append(Paragraph("<b>MATRIZ DE CONTROL Y APROBACIÓN DOCUMENTAL</b>", styles['Title']))
-    story.append(Spacer(1, 12))
-    story.append(Paragraph(f"<b>Documento:</b> {doc_info[0]}", styles['Normal']))
-    nota_formateada = doc_info[1].replace('\n', '<br/>')
-    story.append(Paragraph(f"<b>Notas del flujo:</b><br/>{nota_formateada}", styles['Normal']))
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 20)) # Espacio en blanco antes de la tabla
 
-    # --- ENCABEZADOS (Pueden ir como texto plano porque sabemos que caben) ---
+    # --- ENCABEZADOS DE LA TABLA ---
     data = [["Rol", "Nombre Completo", "Cargo", "Correo", "Estado", "Fecha y Hora"]]
     
-    # Función auxiliar para convertir cualquier texto en un Párrafo ajustable
     def ajustar_texto(texto):
         return Paragraph(str(texto), estilo_celda)
 
-    # 1. Agregamos al Elaborador convirtiendo cada campo a Paragraph
+    # 3. Agregamos al Elaborador
     data.append([
         ajustar_texto("Elaborador"), 
+        ajustar_texto(doc_info[0]), 
+        ajustar_texto(doc_info[1]), 
         ajustar_texto(doc_info[2]), 
-        ajustar_texto(doc_info[3]), 
-        ajustar_texto(doc_info[4]), 
         ajustar_texto("ELABORADO"), 
-        ajustar_texto(doc_info[5])
+        ajustar_texto(doc_info[3])
     ])
 
-    # 2. Agregamos al resto de los actores (Revisores y Aprobadores)
-    for f in firmas:
+    # 4. Agregamos SOLO las firmas definitivas y vigentes
+    for f in firmas_definitivas:
         data.append([
             ajustar_texto(f[0]), 
             ajustar_texto(f[1]), 
@@ -166,7 +166,7 @@ def generar_hoja_control_temporal(doc_id):
             ajustar_texto(f[5])
         ])
 
-    # Ajustamos un poco los anchos (Total ~ 552 puntos, que es el espacio útil de una hoja carta)
+    # Construimos y pintamos la tabla
     t = Table(data, colWidths=[60, 110, 110, 120, 65, 87])
     
     t.setStyle(TableStyle([
@@ -176,13 +176,14 @@ def generar_hoja_control_temporal(doc_id):
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0,0), (-1,0), 6),
         ('GRID', (0,0), (-1,-1), 1, colors.grey),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'), # Asegura que el texto quede centrado verticalmente
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
     
     story.append(t)
     doc.build(story)
     
     return temp_hoja
+    
 def procesar_cierre_documento(doc_id_input, doc_nombre_nextcloud):
     ruta_hoja_temporal = generar_hoja_control_temporal(doc_id_input)
     
