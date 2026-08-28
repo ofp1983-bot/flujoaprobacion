@@ -490,6 +490,7 @@ else:
                 st.error("Documento no encontrado. Verifica el ID.")
             conn.close()
             # ... (Código anterior donde muestras la tabla con df_firmas y el botón de Excel) ...
+    
 
                 # --- 1. LÓGICA SI ESTÁ EN REVISIÓN ---
                 if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
@@ -562,6 +563,8 @@ else:
                                 st.error("Error al subir el nuevo documento a Nextcloud.")
                         else:
                             st.warning("Debes adjuntar el documento corregido y escribir una nota.")
+
+                
 
     elif menu == "3. Documentos Finalizados":
         st.header("Repositorio de Documentos Completados")
