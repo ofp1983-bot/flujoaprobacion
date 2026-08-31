@@ -147,7 +147,7 @@ def generar_hoja_control_temporal(doc_id):
 
     # 3. Agregamos al Elaborador
     data.append([
-        ajustar_texto("Elaborador"), 
+        ajustar_texto("ELABORADOR"), 
         ajustar_texto(doc_info[0]), 
         ajustar_texto(doc_info[1]), 
         ajustar_texto(doc_info[2]), 
@@ -378,7 +378,7 @@ else:
                         from openpyxl.utils.dataframe import dataframe_to_rows
                         
                         historial = [{
-                            'Rol': 'Elaborador', 'Nombre': elab_data[0], 'Cargo': elab_data[1],
+                            'Rol': 'ELABORADOR', 'Nombre': elab_data[0], 'Cargo': elab_data[1],
                             'Decisión': 'ELABORADO', 'Observación': 'Inicio del flujo / Envío a revisión', 'Fecha y Hora': elab_data[2]
                         }]
                         for f in firmas:
