@@ -246,7 +246,7 @@ if token:
                     nombre = st.text_input("Nombre completo:")
                     cargo = st.text_input("Cargo:")
                     correo = st.text_input("Correo electrónico institucional:")
-                    observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):")
+                    observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):", key="obs_firma")
                     submit = st.form_submit_button("Confirmar y Registrar")
     
                     if submit:
@@ -291,9 +291,9 @@ else:
             correo_elab = st.text_input("Tu Correo Institucional:")
 
         st.subheader("Configuración del Documento")
-        archivo = st.file_uploader("Selecciona el documento (PDF)", type=["pdf"])
+        archivo = st.file_uploader("Selecciona el documento (PDF)", type=["pdf"], key="archivo_inicio")
         num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1)
-        observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):")
+        observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):", key="obs_inicio")
 
         
         
@@ -510,8 +510,8 @@ else:
                         st.subheader("🔄 Reiniciar Flujo (Subir Correcciones)")
                         st.info(f"Al reiniciar, se conservará el ID **{doc_id_input}** para mantener toda la trazabilidad histórica.")
                         
-                        nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"])
-                        nueva_obs = st.text_area("Nota sobre los ajustes realizados:")
+                        nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"], key="archivo_reinicio")
+                        nueva_obs = st.text_area("Nota sobre los ajustes realizados:", key="obs_reinicio")
                         nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3], key="num_rev_reinicio")
                         st.write("**Correos institucionales autorizados para la nueva revisión:**")
                         correos_reinicio = []
