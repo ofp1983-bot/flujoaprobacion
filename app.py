@@ -222,56 +222,56 @@ st.set_page_config(page_title="Gestión y Aprobación Documental", layout="wide"
 params = st.query_params
 token = params.get("token", None)
 
-    if token:
-        # ----------------- VISTA REVISOR / APROBADOR (VÍA TOKEN) -----------------
-    with sqlite3.connect(DB_FILE) as conn:
-            c = conn.cursor()
-            # Se añade correo_esperado a la consulta
-            c.execute("SELECT doc_id, rol, decision, correo_esperado FROM firmas_flujo WHERE token = ?", (token,))
-            registro = c.fetchone()
-    
-            if not registro:
-                st.error("Enlace no válido o expirado.")
-            elif registro[2] != "PENDIENTE":
-                st.info(f"Ya has completado esta gestión. Estado actual: {registro[2]}")
-            else:
-                doc_id, rol, _, correo_esperado = registro
-                c.execute("SELECT nombre_archivo, ruta_archivo, observacion_inicial FROM documentos WHERE id = ?", (doc_id,))
-                doc = c.fetchone()
-                
-                st.title(f"Gestión de {rol} de Documento")
-                # ... (Aquí va tu código actual de descargar documento y radio buttons) ...
-    
-                with st.form("form_firma"):
-                    nombre = st.text_input("Nombre completo:")
-                    cargo = st.text_input("Cargo:")
-                    correo = st.text_input("Correo electrónico institucional:")
-                    observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):")
-                    submit = st.form_submit_button("Confirmar y Registrar")
-    
-                    if submit:
-                        # Validamos el correo ignorando mayúsculas y espacios
-                        if correo.strip().lower() != correo_esperado.strip().lower():
-                            st.error("El correo electrónico no coincide con el asignado para este enlace.")
-                        elif not nombre or not cargo or not correo:
-                            st.error("Nombre, cargo y correo son obligatorios.")
-                        elif decision == "Rechazar/Devolver" and not observaciones.strip():
-                            st.error("Debe ingresar una observación para justificar la devolución.")
-                        else:
-                        now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
-                        estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
-                        
-                        c.execute("""UPDATE firmas_flujo 
-                                     SET nombre=?, cargo=?, correo=?, decision=?, observacion=?, fecha_hora=? 
-                                     WHERE token=?""", (nombre, cargo, correo, estado_decision, observaciones, now, token))
-                        
-                        if estado_decision == "RECHAZADO":
-                            nuevo_estado = "RECHAZADO_REV" if rol == "REVISOR" else "RECHAZADO_APR"
-                            c.execute("UPDATE documentos SET estado = ? WHERE id = ?", (nuevo_estado, doc_id))
-                        
-                        conn.commit()
-                        st.success("Acción registrada con éxito. Ya puedes cerrar esta ventana.")
-        conn.close()
+if token:
+    # ----------------- VISTA REVISOR / APROBADOR (VÍA TOKEN) -----------------
+with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        # Se añade correo_esperado a la consulta
+        c.execute("SELECT doc_id, rol, decision, correo_esperado FROM firmas_flujo WHERE token = ?", (token,))
+        registro = c.fetchone()
+
+        if not registro:
+            st.error("Enlace no válido o expirado.")
+        elif registro[2] != "PENDIENTE":
+            st.info(f"Ya has completado esta gestión. Estado actual: {registro[2]}")
+        else:
+            doc_id, rol, _, correo_esperado = registro
+            c.execute("SELECT nombre_archivo, ruta_archivo, observacion_inicial FROM documentos WHERE id = ?", (doc_id,))
+            doc = c.fetchone()
+            
+            st.title(f"Gestión de {rol} de Documento")
+            # ... (Aquí va tu código actual de descargar documento y radio buttons) ...
+
+            with st.form("form_firma"):
+                nombre = st.text_input("Nombre completo:")
+                cargo = st.text_input("Cargo:")
+                correo = st.text_input("Correo electrónico institucional:")
+                observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):")
+                submit = st.form_submit_button("Confirmar y Registrar")
+
+                if submit:
+                    # Validamos el correo ignorando mayúsculas y espacios
+                    if correo.strip().lower() != correo_esperado.strip().lower():
+                        st.error("El correo electrónico no coincide con el asignado para este enlace.")
+                    elif not nombre or not cargo or not correo:
+                        st.error("Nombre, cargo y correo son obligatorios.")
+                    elif decision == "Rechazar/Devolver" and not observaciones.strip():
+                        st.error("Debe ingresar una observación para justificar la devolución.")
+                    else:
+                    now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
+                    estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
+                    
+                    c.execute("""UPDATE firmas_flujo 
+                                 SET nombre=?, cargo=?, correo=?, decision=?, observacion=?, fecha_hora=? 
+                                 WHERE token=?""", (nombre, cargo, correo, estado_decision, observaciones, now, token))
+                    
+                    if estado_decision == "RECHAZADO":
+                        nuevo_estado = "RECHAZADO_REV" if rol == "REVISOR" else "RECHAZADO_APR"
+                        c.execute("UPDATE documentos SET estado = ? WHERE id = ?", (nuevo_estado, doc_id))
+                    
+                    conn.commit()
+                    st.success("Acción registrada con éxito. Ya puedes cerrar esta ventana.")
+    conn.close()
 
 else:
     # ----------------- PANEL PRINCIPAL / ELABORADOR -----------------
