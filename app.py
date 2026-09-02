@@ -278,7 +278,7 @@ else:
     st.sidebar.title("Menú de Gestión")
     menu = st.sidebar.radio("Opciones", ["1. Iniciar Nuevo Flujo", "2. Estado y Aprobadores", "3. Documentos Finalizados"])
 
-    elif menu == "1. Iniciar Nuevo Flujo":
+    if menu == "1. Iniciar Nuevo Flujo":
         st.header("Carga de Documento e Inicio de Flujo")
         
         st.subheader("Datos del Elaborador")
