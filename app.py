@@ -58,6 +58,7 @@ def init_db():
                     doc_id TEXT, 
                     token TEXT UNIQUE,
                     rol TEXT, 
+                    correo_esperado TEXT,
                     nombre TEXT, 
                     cargo TEXT, 
                     correo TEXT, 
@@ -223,49 +224,40 @@ token = params.get("token", None)
 
 if token:
     # ----------------- VISTA REVISOR / APROBADOR (VÍA TOKEN) -----------------
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT doc_id, rol, decision FROM firmas_flujo WHERE token = ?", (token,))
-    registro = c.fetchone()
+with sqlite3.connect(DB_FILE) as conn:
+        c = conn.cursor()
+        # Se añade correo_esperado a la consulta
+        c.execute("SELECT doc_id, rol, decision, correo_esperado FROM firmas_flujo WHERE token = ?", (token,))
+        registro = c.fetchone()
 
-    if not registro:
-        st.error("Enlace no válido o expirado.")
-    elif registro[2] != "PENDIENTE":
-        st.info(f"Ya has completado esta gestión. Estado actual: {registro[2]}")
-    else:
-        doc_id, rol, _ = registro
-        c.execute("SELECT nombre_archivo, ruta_archivo, observacion_inicial FROM documentos WHERE id = ?", (doc_id,))
-        doc = c.fetchone()
-        
-        st.title(f"Gestión de {rol} de Documento")
-        st.write(f"**Archivo:** {doc[0]}")
-        st.write(f"**Nota inicial:** {doc[2]}")
-
-        # Descarga desde Nextcloud a memoria
-        nombre_nextcloud = doc[1]
-        pdf_bytes = descargar_de_nextcloud(nombre_nextcloud)
-
-        if pdf_bytes:
-            st.download_button("📥 Descargar documento para revisión", data=pdf_bytes, file_name=doc[0], mime="application/pdf")
+        if not registro:
+            st.error("Enlace no válido o expirado.")
+        elif registro[2] != "PENDIENTE":
+            st.info(f"Ya has completado esta gestión. Estado actual: {registro[2]}")
         else:
-            st.error("Error: El documento no se encontró en el repositorio de Nextcloud.")
+            doc_id, rol, _, correo_esperado = registro
+            c.execute("SELECT nombre_archivo, ruta_archivo, observacion_inicial FROM documentos WHERE id = ?", (doc_id,))
+            doc = c.fetchone()
+            
+            st.title(f"Gestión de {rol} de Documento")
+            # ... (Aquí va tu código actual de descargar documento y radio buttons) ...
 
-        st.divider()
-        decision = st.radio("Indica tu decisión:", ["Aprobar", "Rechazar/Devolver"])
+            with st.form("form_firma"):
+                nombre = st.text_input("Nombre completo:")
+                cargo = st.text_input("Cargo:")
+                correo = st.text_input("Correo electrónico institucional:")
+                observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):")
+                submit = st.form_submit_button("Confirmar y Registrar")
 
-        with st.form("form_firma"):
-            nombre = st.text_input("Nombre completo:")
-            cargo = st.text_input("Cargo:")
-            correo = st.text_input("Correo electrónico institucional:")
-            observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):")
-            submit = st.form_submit_button("Confirmar y Registrar")
-
-            if submit:
-                if not nombre or not cargo or not correo:
-                    st.error("Nombre, cargo y correo son obligatorios.")
-                elif decision == "Rechazar/Devolver" and not observaciones.strip():
-                    st.error("Debe ingresar una observación para justificar la devolución.")
-                else:
+                if submit:
+                    # Validamos el correo ignorando mayúsculas y espacios
+                    if correo.strip().lower() != correo_esperado.strip().lower():
+                        st.error("El correo electrónico no coincide con el asignado para este enlace.")
+                    elif not nombre or not cargo or not correo:
+                        st.error("Nombre, cargo y correo son obligatorios.")
+                    elif decision == "Rechazar/Devolver" and not observaciones.strip():
+                        st.error("Debe ingresar una observación para justificar la devolución.")
+                    else:
                     now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
                     estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
                     
@@ -286,7 +278,7 @@ else:
     st.sidebar.title("Menú de Gestión")
     menu = st.sidebar.radio("Opciones", ["1. Iniciar Nuevo Flujo", "2. Estado y Aprobadores", "3. Documentos Finalizados"])
 
-    if menu == "1. Iniciar Nuevo Flujo":
+    elif menu == "1. Iniciar Nuevo Flujo":
         st.header("Carga de Documento e Inicio de Flujo")
         
         st.subheader("Datos del Elaborador")
@@ -302,6 +294,32 @@ else:
         archivo = st.file_uploader("Selecciona el documento (PDF)", type=["pdf"])
         num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1)
         observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):")
+
+        num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1)
+        
+        st.write("**Correos institucionales autorizados para revisión:**")
+        correos_revisores = []
+        for i in range(num_revisores):
+            # Se usa un 'key' dinámico para que Streamlit cree múltiples campos
+            correos_revisores.append(st.text_input(f"Correo del Revisor {i+1}:", key=f"rev_{i}"))
+            
+        observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):")
+
+        if st.button("Crear Flujo y Generar Enlaces"):
+            if not all(correos_revisores):
+                st.warning("Debes ingresar el correo de todos los revisores asignados.")
+            elif archivo and observacion and nombre_elab and cargo_elab and correo_elab:
+                # ... (Código de subir a Nextcloud e INSERT de documentos) ...
+                
+                    tokens = []
+                    import uuid
+                    for correo_esp in correos_revisores:
+                        tok = str(uuid.uuid4())
+                        # Insertamos el correo_esperado en la tabla de firmas
+                        c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) 
+                                     VALUES (?, ?, 'REVISOR', ?, 'PENDIENTE')""", (doc_id, tok, correo_esp.strip().lower()))
+                        tokens.append(tok)
+                # ...
 
         if st.button("Crear Flujo y Generar Enlaces"):
             if archivo and observacion and nombre_elab and cargo_elab and correo_elab:
@@ -435,6 +453,24 @@ else:
                         st.success("✅ Todos los revisores han aprobado el documento.")
                         st.subheader("Paso 2: Configurar Aprobadores")
                         num_apr = st.number_input("Número de Aprobadores requeridos:", min_value=1, max_value=10, value=1)
+                        st.write("**Correos institucionales autorizados para aprobación:**")
+                        correos_aprobadores = []
+                        for i in range(num_apr):
+                            correos_aprobadores.append(st.text_input(f"Correo del Aprobador {i+1}:", key=f"apr_{i}"))
+                    
+                        if st.button("Generar Enlaces para Aprobadores"):
+                            if not all(correos_aprobadores):
+                                st.warning("Debes ingresar el correo de todos los aprobadores asignados.")
+                            else:
+                                tokens_apr = []
+                                import uuid
+                                for correo_esp in correos_aprobadores:
+                                    tok = str(uuid.uuid4())
+                                    c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) VALUES (?, ?, 'APROBADOR', ?, 'PENDIENTE')", (doc_id_input, tok, correo_esp.strip().lower()))
+                                    tokens_apr.append(tok)
+                            
+                                c.execute("UPDATE documentos SET estado = 'APROBACION', total_aprobadores = ? WHERE id = ?", (num_apr, doc_id_input))
+                                conn.commit()
                         
                         if st.button("Generar Enlaces para Aprobadores"):
                             tokens_apr = []
@@ -477,6 +513,23 @@ else:
                         nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"])
                         nueva_obs = st.text_area("Nota sobre los ajustes realizados:")
                         nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3])
+                        st.write("**Correos institucionales autorizados para la nueva revisión:**")
+                        correos_reinicio = []
+                        for i in range(nuevos_rev):
+                            correos_reinicio.append(st.text_input(f"Correo del Revisor {i+1}:", key=f"rein_{i}"))
+                        
+                        if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
+                            if not all(correos_reinicio):
+                                st.warning("Debes ingresar el correo de todos los revisores asignados.")
+                            elif nuevo_archivo and nueva_obs:
+                                # ... (Código de nextcloud y pasar a histórico) ...
+                                
+                                    tokens_reinicio = []
+                                    import uuid
+                                    for correo_esp in correos_reinicio:
+                                        tok = str(uuid.uuid4())
+                                        c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) VALUES (?, ?, 'REVISOR', ?, 'PENDIENTE')", (doc_id_input, tok, correo_esp.strip().lower()))
+                                        tokens_reinicio.append(tok)
                         
                         if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
                             if nuevo_archivo and nueva_obs:
