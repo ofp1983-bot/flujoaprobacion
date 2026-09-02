@@ -271,7 +271,7 @@ if token:
                         
                         conn.commit()
                         st.success("Acción registrada con éxito. Ya puedes cerrar esta ventana.")
-        conn.close()
+            conn.close()
 
 else:
     # ----------------- PANEL PRINCIPAL / ELABORADOR -----------------
