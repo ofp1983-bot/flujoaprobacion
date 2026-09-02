@@ -33,7 +33,7 @@ NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 
 # URL base para los enlaces
-BASE_URL = "http://localhost:8501"
+BASE_URL = "https://flujoaprobacion.streamlit.app/"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS
