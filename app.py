@@ -258,12 +258,12 @@ if token:
                         elif decision == "Rechazar/Devolver" and not observaciones.strip():
                             st.error("Debe ingresar una observación para justificar la devolución.")
                         else:
-                        now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
-                        estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
-                        
-                        c.execute("""UPDATE firmas_flujo 
-                                     SET nombre=?, cargo=?, correo=?, decision=?, observacion=?, fecha_hora=? 
-                                     WHERE token=?""", (nombre, cargo, correo, estado_decision, observaciones, now, token))
+                            now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
+                            estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
+                            
+                            c.execute("""UPDATE firmas_flujo 
+                                         SET nombre=?, cargo=?, correo=?, decision=?, observacion=?, fecha_hora=? 
+                                         WHERE token=?""", (nombre, cargo, correo, estado_decision, observaciones, now, token))
                         
                         if estado_decision == "RECHAZADO":
                             nuevo_estado = "RECHAZADO_REV" if rol == "REVISOR" else "RECHAZADO_APR"
