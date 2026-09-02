@@ -6,33 +6,34 @@ import io
 import requests
 from requests.auth import HTTPBasicAuth
 from datetime import datetime, timezone, timedelta
-
-# Definimos la zona horaria para Colombia (UTC-5)
-ZONA_COL = timezone(timedelta(hours=-5))
-
+import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils.dataframe import dataframe_to_rows
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
-from pypdf import PdfWriter, PdfReader
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib import colors
+from pypdf import PdfWriter, PdfReader
 
 # ==========================================
 # CONFIGURACIÓN GENERAL Y CREDENCIALES
 # ==========================================
 DB_FILE = "flujo_documental.db"
 
-# CONFIGURACIÓN NEXTCLOUD (Ajusta estos valores a tu entorno real)
-NC_URL = "https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/aprobaciones"
-NC_USER = "gdocumental@insdeportescajica.gov.co"
-NC_PASS = "nisZG-FgTYd-QfiYy-6qMik-GrMjC" # Se recomienda usar una Contraseña de Aplicación
+# Zona horaria de Colombia (UTC-5)
+ZONA_COL = timezone(timedelta(hours=-5))
+
+# CONFIGURACIÓN NEXTCLOUD
+NC_USER = "tu_usuario"
+NC_PASS = "tu_app_password" 
+# Asegúrate de usar la URL correcta para la API WebDAV
+NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/{NC_USER}/Aprobaciones"
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 
-# URL base para los enlaces (Cámbiala por la URL de tu app en producción)
-BASE_URL = "https://flujoaprobacion.streamlit.app/"
+# URL base para los enlaces
+BASE_URL = "http://localhost:8501"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS
@@ -74,26 +75,19 @@ init_db()
 # FUNCIONES DE NEXTCLOUD (WEBDAV)
 # ==========================================
 def subir_a_nextcloud(archivo_bytes, nombre_archivo):
-    """Sube un archivo a Nextcloud usando WebDAV (PUT) e imprime errores"""
     url = f"{NC_URL}/{nombre_archivo}"
     try:
         respuesta = requests.put(url, data=archivo_bytes, auth=AUTH)
-        
-        # Si la respuesta es exitosa (201 Created o 204 No Content)
         if respuesta.status_code in [201, 204]:
             return True
         else:
-            # Si falla, mostramos el error exacto en la interfaz de Streamlit
             st.error(f"Fallo en Nextcloud - Código HTTP {respuesta.status_code}: {respuesta.text}")
             return False
-            
     except requests.exceptions.RequestException as e:
-        # Esto captura errores de red (ej. si el servidor está caído o la URL está mal escrita)
         st.error(f"Error de conexión con el servidor: {e}")
         return False
 
 def descargar_de_nextcloud(nombre_archivo):
-    """Descarga un archivo desde Nextcloud en memoria (GET)"""
     url = f"{NC_URL}/{nombre_archivo}"
     respuesta = requests.get(url, auth=AUTH)
     if respuesta.status_code == 200:
@@ -104,19 +98,14 @@ def descargar_de_nextcloud(nombre_archivo):
 # FUNCIONES DE GENERACIÓN PDF Y CIERRE
 # ==========================================
 def generar_hoja_control_temporal(doc_id):
-    # Usamos 'with' para abrir y cerrar la conexión de forma segura
     with sqlite3.connect(DB_FILE) as conn:
         c = conn.cursor()
-        
-        # 1. FILTRO APLICADO: Solo traemos firmas cuya decisión sea exactamente 'APROBADO'
-        # Esto excluye todo lo que sea 'RECHAZADO' o que tenga la etiqueta '(Histórico)'
         c.execute("""SELECT rol, nombre, cargo, correo, decision, fecha_hora 
                      FROM firmas_flujo 
                      WHERE doc_id = ? AND decision = 'APROBADO' 
                      ORDER BY id ASC""", (doc_id,))
         firmas_definitivas = c.fetchall()
         
-        # Traemos la información del elaborador
         c.execute("""SELECT nombre_elaborador, cargo_elaborador, correo_elaborador, fecha_creacion 
                      FROM documentos WHERE id = ?""", (doc_id,))
         doc_info = c.fetchone()
@@ -124,7 +113,6 @@ def generar_hoja_control_temporal(doc_id):
     temp_hoja = f"hoja_control_{doc_id}.pdf"
     doc = SimpleDocTemplate(temp_hoja, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     
-    # --- ESTILOS DE TEXTO ---
     styles = getSampleStyleSheet()
     estilo_celda = ParagraphStyle(
         'EstiloCelda',
@@ -135,20 +123,16 @@ def generar_hoja_control_temporal(doc_id):
     )
 
     story = []
-
-    # 2. DISEÑO LIMPIO: Solo dejamos el Título
     story.append(Paragraph("<b>MATRIZ DE CONTROL Y APROBACIÓN DOCUMENTAL</b>", styles['Title']))
-    story.append(Spacer(1, 20)) # Espacio en blanco antes de la tabla
+    story.append(Spacer(1, 20))
 
-    # --- ENCABEZADOS DE LA TABLA ---
     data = [["Rol", "Nombre Completo", "Cargo", "Correo", "Estado", "Fecha y Hora"]]
     
     def ajustar_texto(texto):
         return Paragraph(str(texto), estilo_celda)
 
-    # 3. Agregamos al Elaborador
     data.append([
-        ajustar_texto("ELABORADOR"), 
+        ajustar_texto("Elaborador"), 
         ajustar_texto(doc_info[0]), 
         ajustar_texto(doc_info[1]), 
         ajustar_texto(doc_info[2]), 
@@ -156,20 +140,13 @@ def generar_hoja_control_temporal(doc_id):
         ajustar_texto(doc_info[3])
     ])
 
-    # 4. Agregamos SOLO las firmas definitivas y vigentes
     for f in firmas_definitivas:
         data.append([
-            ajustar_texto(f[0]), 
-            ajustar_texto(f[1]), 
-            ajustar_texto(f[2]), 
-            ajustar_texto(f[3]), 
-            ajustar_texto(f[4]), 
-            ajustar_texto(f[5])
+            ajustar_texto(f[0]), ajustar_texto(f[1]), ajustar_texto(f[2]), 
+            ajustar_texto(f[3]), ajustar_texto(f[4]), ajustar_texto(f[5])
         ])
 
-    # Construimos y pintamos la tabla
     t = Table(data, colWidths=[60, 110, 110, 120, 65, 87])
-    
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1A365D")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
@@ -182,13 +159,12 @@ def generar_hoja_control_temporal(doc_id):
     
     story.append(t)
     doc.build(story)
-    
     return temp_hoja
-    
+
 def procesar_cierre_documento(doc_id_input, doc_nombre_nextcloud):
     ruta_hoja_temporal = generar_hoja_control_temporal(doc_id_input)
-    
     pdf_original_bytes = descargar_de_nextcloud(doc_nombre_nextcloud)
+    
     if not pdf_original_bytes:
         return None, None
 
@@ -213,7 +189,6 @@ def procesar_cierre_documento(doc_id_input, doc_nombre_nextcloud):
         
     return pdf_final_bytes, nombre_final_nc
 
-
 # ==========================================
 # INTERFAZ DE USUARIO - STREAMLIT
 # ==========================================
@@ -223,47 +198,58 @@ params = st.query_params
 token = params.get("token", None)
 
 if token:
-    # ----------------- VISTA REVISOR / APROBADOR (VÍA TOKEN) -----------------
+    # ----------------- VISTA REVISOR / APROBADOR -----------------
     with sqlite3.connect(DB_FILE) as conn:
-            c = conn.cursor()
-            # Se añade correo_esperado a la consulta
-            c.execute("SELECT doc_id, rol, decision, correo_esperado FROM firmas_flujo WHERE token = ?", (token,))
-            registro = c.fetchone()
-    
-            if not registro:
-                st.error("Enlace no válido o expirado.")
-            elif registro[2] != "PENDIENTE":
-                st.info(f"Ya has completado esta gestión. Estado actual: {registro[2]}")
+        c = conn.cursor()
+        c.execute("SELECT doc_id, rol, decision, correo_esperado FROM firmas_flujo WHERE token = ?", (token,))
+        registro = c.fetchone()
+
+        if not registro:
+            st.error("Enlace no válido o expirado.")
+        elif registro[2] != "PENDIENTE":
+            st.info(f"Ya has completado esta gestión. Estado actual: {registro[2]}")
+        else:
+            doc_id, rol, _, correo_esperado = registro
+            c.execute("SELECT nombre_archivo, ruta_archivo, observacion_inicial FROM documentos WHERE id = ?", (doc_id,))
+            doc = c.fetchone()
+            
+            st.title(f"Gestión de {rol} de Documento")
+            st.write(f"**Archivo:** {doc[0]}")
+            nota_formateada = doc[2].replace('\n', '  \n')
+            st.write(f"**Notas del flujo:**  \n{nota_formateada}")
+
+            nombre_nextcloud = doc[1]
+            pdf_bytes = descargar_de_nextcloud(nombre_nextcloud)
+
+            if pdf_bytes:
+                st.download_button("📥 Descargar documento para revisión", data=pdf_bytes, file_name=doc[0], mime="application/pdf", key="btn_dl_revision")
             else:
-                doc_id, rol, _, correo_esperado = registro
-                c.execute("SELECT nombre_archivo, ruta_archivo, observacion_inicial FROM documentos WHERE id = ?", (doc_id,))
-                doc = c.fetchone()
-                
-                st.title(f"Gestión de {rol} de Documento")
-                # ... (Aquí va tu código actual de descargar documento y radio buttons) ...
-    
-                with st.form("form_firma"):
-                    nombre = st.text_input("Nombre completo:")
-                    cargo = st.text_input("Cargo:")
-                    correo = st.text_input("Correo electrónico institucional:")
-                    observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):", key="obs_firma")
-                    submit = st.form_submit_button("Confirmar y Registrar")
-    
-                    if submit:
-                        # Validamos el correo ignorando mayúsculas y espacios
-                        if correo.strip().lower() != correo_esperado.strip().lower():
-                            st.error("El correo electrónico no coincide con el asignado para este enlace.")
-                        elif not nombre or not cargo or not correo:
-                            st.error("Nombre, cargo y correo son obligatorios.")
-                        elif decision == "Rechazar/Devolver" and not observaciones.strip():
-                            st.error("Debe ingresar una observación para justificar la devolución.")
-                        else:
-                            now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
-                            estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
-                            
-                            c.execute("""UPDATE firmas_flujo 
-                                         SET nombre=?, cargo=?, correo=?, decision=?, observacion=?, fecha_hora=? 
-                                         WHERE token=?""", (nombre, cargo, correo, estado_decision, observaciones, now, token))
+                st.error("Error: El documento no se encontró en el repositorio de Nextcloud.")
+
+            st.divider()
+            decision = st.radio("Indica tu decisión:", ["Aprobar", "Rechazar/Devolver"])
+
+            with st.form("form_firma"):
+                nombre = st.text_input("Nombre completo:")
+                cargo = st.text_input("Cargo:")
+                correo = st.text_input("Correo electrónico institucional:")
+                observaciones = st.text_area("Observaciones (obligatorio si rechaza/devuelve):", key="obs_firma")
+                submit = st.form_submit_button("Confirmar y Registrar")
+
+                if submit:
+                    if correo.strip().lower() != correo_esperado.strip().lower():
+                        st.error("El correo electrónico no coincide con el asignado para este enlace.")
+                    elif not nombre or not cargo or not correo:
+                        st.error("Nombre, cargo y correo son obligatorios.")
+                    elif decision == "Rechazar/Devolver" and not observaciones.strip():
+                        st.error("Debe ingresar una observación para justificar la devolución.")
+                    else:
+                        now = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
+                        estado_decision = "APROBADO" if decision == "Aprobar" else "RECHAZADO"
+                        
+                        c.execute("""UPDATE firmas_flujo 
+                                     SET nombre=?, cargo=?, correo=?, decision=?, observacion=?, fecha_hora=? 
+                                     WHERE token=?""", (nombre, cargo, correo, estado_decision, observaciones, now, token))
                         
                         if estado_decision == "RECHAZADO":
                             nuevo_estado = "RECHAZADO_REV" if rol == "REVISOR" else "RECHAZADO_APR"
@@ -271,12 +257,10 @@ if token:
                         
                         conn.commit()
                         st.success("Acción registrada con éxito. Ya puedes cerrar esta ventana.")
-            conn.close()
-
 else:
-    # ----------------- PANEL PRINCIPAL / ELABORADOR -----------------
+    # ----------------- PANEL PRINCIPAL -----------------
     st.sidebar.title("Menú de Gestión")
-    menu = st.sidebar.radio("Opciones", ["1. Iniciar Nuevo Flujo", "2. Estado y Aprobadores", "3. Documentos Finalizados"])
+    menu = st.sidebar.radio("Opciones", ["1. Iniciar Nuevo Flujo", "2. Estado y Aprobadores", "3. Documentos Finalizados", "4. Respaldo de Base de Datos"])
 
     if menu == "1. Iniciar Nuevo Flujo":
         st.header("Carga de Documento e Inicio de Flujo")
@@ -292,37 +276,19 @@ else:
 
         st.subheader("Configuración del Documento")
         archivo = st.file_uploader("Selecciona el documento (PDF)", type=["pdf"], key="archivo_inicio")
-        num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1)
-        observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):", key="obs_inicio")
-
-        
+        num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1, key="num_rev_inicio")
         
         st.write("**Correos institucionales autorizados para revisión:**")
         correos_revisores = []
         for i in range(num_revisores):
-            # Se usa un 'key' dinámico para que Streamlit cree múltiples campos
             correos_revisores.append(st.text_input(f"Correo del Revisor {i+1}:", key=f"rev_{i}"))
             
-        observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):")
+        observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):", key="obs_inicio")
 
-        if st.button("Crear Flujo y Generar Enlaces"):
+        if st.button("Crear Flujo y Generar Enlaces", key="btn_crear_flujo"):
             if not all(correos_revisores):
                 st.warning("Debes ingresar el correo de todos los revisores asignados.")
             elif archivo and observacion and nombre_elab and cargo_elab and correo_elab:
-                # ... (Código de subir a Nextcloud e INSERT de documentos) ...
-                
-                    tokens = []
-                    import uuid
-                    for correo_esp in correos_revisores:
-                        tok = str(uuid.uuid4())
-                        # Insertamos el correo_esperado en la tabla de firmas
-                        c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) 
-                                     VALUES (?, ?, 'REVISOR', ?, 'PENDIENTE')""", (doc_id, tok, correo_esp.strip().lower()))
-                        tokens.append(tok)
-                # ...
-
-        if st.button("Crear Flujo y Generar Enlaces"):
-            if archivo and observacion and nombre_elab and cargo_elab and correo_elab:
                 doc_id = str(uuid.uuid4())[:8]
                 nombre_guardado = f"{doc_id}_{archivo.name}"
                 
@@ -330,30 +296,27 @@ else:
                     exito_subida = subir_a_nextcloud(archivo.getvalue(), nombre_guardado)
                 
                 if exito_subida:
-                    conn = sqlite3.connect(DB_FILE)
-                    c = conn.cursor()
-                    fecha_creacion = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    c.execute("""INSERT INTO documentos VALUES (?, ?, ?, ?, 'REVISION', ?, 0, ?, ?, ?, ?)""",
-                              (doc_id, archivo.name, nombre_guardado, observacion, num_revisores, 
-                               fecha_creacion, nombre_elab, correo_elab, cargo_elab))
-                    
-                    tokens = []
-                    for _ in range(num_revisores):
-                        tok = str(uuid.uuid4())
-                        c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, decision) 
-                                     VALUES (?, ?, 'REVISOR', 'PENDIENTE')""", (doc_id, tok))
-                        tokens.append(tok)
+                    with sqlite3.connect(DB_FILE) as conn:
+                        c = conn.cursor()
+                        fecha_creacion = datetime.now(ZONA_COL).strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        c.execute("""INSERT INTO documentos VALUES (?, ?, ?, ?, 'REVISION', ?, 0, ?, ?, ?, ?)""",
+                                  (doc_id, archivo.name, nombre_guardado, observacion, num_revisores, 
+                                   fecha_creacion, nombre_elab, correo_elab, cargo_elab))
+                        
+                        tokens = []
+                        for correo_esp in correos_revisores:
+                            tok = str(uuid.uuid4())
+                            c.execute("""INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) 
+                                         VALUES (?, ?, 'REVISOR', ?, 'PENDIENTE')""", (doc_id, tok, correo_esp.strip().lower()))
+                            tokens.append(tok)
 
-                    conn.commit()
-                    conn.close()
+                        conn.commit()
 
                     st.success(f"Documento guardado en Nextcloud. Flujo creado (ID: {doc_id}).")
                     st.info("Comparte los siguientes enlaces con los revisores:")
                     for i, tok in enumerate(tokens, 1):
                         st.code(f"{BASE_URL}/?token={tok}", language="text")
-                else:
-                    st.error("Error de comunicación con Nextcloud. Revisa las credenciales o la URL.")
             else:
                 st.warning("Por favor, completa todos los campos obligatorios y adjunta un documento.")
 
@@ -362,23 +325,18 @@ else:
         doc_id_input = st.text_input("Ingresa el ID del Documento (Ej: abc123df):")
         
         if doc_id_input:
-            # Usar 'with' soluciona el error: mantiene la base de datos abierta 
-            # de forma segura y la cierra automáticamente al terminar el bloque.
             with sqlite3.connect(DB_FILE) as conn:
                 c = conn.cursor()
-                # Traemos 'observacion_inicial' (doc[4]) para mantener el registro
                 c.execute("SELECT nombre_archivo, ruta_archivo, estado, total_revisores, observacion_inicial FROM documentos WHERE id = ?", (doc_id_input,))
                 doc = c.fetchone()
 
                 if doc:
                     st.write(f"**Archivo original:** {doc[0]} | **Estado Actual:** `{doc[2]}`")
                     
-                    # ---------------- 1. MOSTRAR TABLA DE FIRMAS Y EXCEL ----------------
                     c.execute("SELECT rol, nombre, cargo, decision, observacion, fecha_hora FROM firmas_flujo WHERE doc_id = ?", (doc_id_input,))
                     firmas = c.fetchall()
                     
                     if firmas:
-                        import pandas as pd
                         df_firmas = pd.DataFrame(firmas, columns=["Rol", "Nombre", "Cargo", "Decisión", "Observación", "Fecha y Hora"])
                         df_firmas["Observación"] = df_firmas["Observación"].fillna("Sin observaciones")
                         st.dataframe(df_firmas, use_container_width=True, hide_index=True)
@@ -386,17 +344,11 @@ else:
                         st.write("---")
                         st.subheader("Control y Seguimiento")
                         
-                        # Construir archivo Excel en memoria para evitar bugs en Streamlit
                         c.execute("SELECT nombre_elaborador, cargo_elaborador, fecha_creacion FROM documentos WHERE id = ?", (doc_id_input,))
                         elab_data = c.fetchone()
                         
-                        import io
-                        from openpyxl import Workbook
-                        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-                        from openpyxl.utils.dataframe import dataframe_to_rows
-                        
                         historial = [{
-                            'Rol': 'ELABORADOR', 'Nombre': elab_data[0], 'Cargo': elab_data[1],
+                            'Rol': 'Elaborador', 'Nombre': elab_data[0], 'Cargo': elab_data[1],
                             'Decisión': 'ELABORADO', 'Observación': 'Inicio del flujo / Envío a revisión', 'Fecha y Hora': elab_data[2]
                         }]
                         for f in firmas:
@@ -441,10 +393,10 @@ else:
                             label="📥 Descargar Bitácora de Trazabilidad (.xlsx)",
                             data=excel_io,
                             file_name=f"Bitacora_Trazabilidad_{doc_id_input}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="btn_dl_excel"
                         )
 
-                    # ---------------- 2. EVALUAR ESTADOS Y RUTAS ----------------
                     st.write("---")
                     c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'REVISOR' AND decision = 'APROBADO'", (doc_id_input,))
                     rev_aprobados = c.fetchone()[0]
@@ -453,39 +405,28 @@ else:
                         st.success("✅ Todos los revisores han aprobado el documento.")
                         st.subheader("Paso 2: Configurar Aprobadores")
                         num_apr = st.number_input("Número de Aprobadores requeridos:", min_value=1, max_value=10, value=1, key="num_apr_conf")
+                        
                         st.write("**Correos institucionales autorizados para aprobación:**")
                         correos_aprobadores = []
                         for i in range(num_apr):
                             correos_aprobadores.append(st.text_input(f"Correo del Aprobador {i+1}:", key=f"apr_{i}"))
-                    
-                        if st.button("Generar Enlaces para Aprobadores"):
+                        
+                        if st.button("Generar Enlaces para Aprobadores", key="btn_gen_aprobadores"):
                             if not all(correos_aprobadores):
                                 st.warning("Debes ingresar el correo de todos los aprobadores asignados.")
                             else:
                                 tokens_apr = []
-                                import uuid
                                 for correo_esp in correos_aprobadores:
                                     tok = str(uuid.uuid4())
                                     c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) VALUES (?, ?, 'APROBADOR', ?, 'PENDIENTE')", (doc_id_input, tok, correo_esp.strip().lower()))
                                     tokens_apr.append(tok)
-                            
+                                
                                 c.execute("UPDATE documentos SET estado = 'APROBACION', total_aprobadores = ? WHERE id = ?", (num_apr, doc_id_input))
                                 conn.commit()
-                        
-                        if st.button("Generar Enlaces para Aprobadores"):
-                            tokens_apr = []
-                            import uuid
-                            for _ in range(num_apr):
-                                tok = str(uuid.uuid4())
-                                c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, decision) VALUES (?, ?, 'APROBADOR', 'PENDIENTE')", (doc_id_input, tok))
-                                tokens_apr.append(tok)
-                            
-                            c.execute("UPDATE documentos SET estado = 'APROBACION', total_aprobadores = ? WHERE id = ?", (num_apr, doc_id_input))
-                            conn.commit()
-                            st.success("Enlaces de aprobación generados con éxito:")
-                            for tok in tokens_apr:
-                                st.code(f"{BASE_URL}/?token={tok}", language="text")
-                                
+                                st.success("Enlaces de aprobación generados con éxito:")
+                                for tok in tokens_apr:
+                                    st.code(f"{BASE_URL}/?token={tok}", language="text")
+                                    
                     elif doc[2] == 'APROBACION':
                         c.execute("SELECT COUNT(*) FROM firmas_flujo WHERE doc_id = ? AND rol = 'APROBADOR' AND decision = 'APROBADO'", (doc_id_input,))
                         apr_aprobados = c.fetchone()[0]
@@ -494,14 +435,14 @@ else:
 
                         if apr_aprobados == tot_apr:
                             st.success("🎉 ¡Todos los aprobadores han firmado! El flujo está listo para cerrarse.")
-                            if st.button("Generar Documento Final con Hoja de Firmas"):
+                            if st.button("Generar Documento Final con Hoja de Firmas", key="btn_gen_pdf_final"):
                                 with st.spinner("Descargando, uniendo PDFs y subiendo a Nextcloud..."):
                                     pdf_final_bytes, nombre_final_nc = procesar_cierre_documento(doc_id_input, doc[1])
                                     if pdf_final_bytes:
                                         c.execute("UPDATE documentos SET estado = 'COMPLETADO' WHERE id = ?", (doc_id_input,))
                                         conn.commit()
                                         st.success(f"Documento final guardado en Nextcloud como: `{nombre_final_nc}`")
-                                        st.download_button("📥 Descargar PDF Final", data=pdf_final_bytes, file_name=nombre_final_nc, mime="application/pdf")
+                                        st.download_button("📥 Descargar PDF Final", data=pdf_final_bytes, file_name=nombre_final_nc, mime="application/pdf", key="btn_dl_pdf_final")
                                     else:
                                         st.error("Error obteniendo el archivo original desde Nextcloud.")
 
@@ -513,26 +454,16 @@ else:
                         nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"], key="archivo_reinicio")
                         nueva_obs = st.text_area("Nota sobre los ajustes realizados:", key="obs_reinicio")
                         nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3], key="num_rev_reinicio")
+                        
                         st.write("**Correos institucionales autorizados para la nueva revisión:**")
                         correos_reinicio = []
                         for i in range(nuevos_rev):
                             correos_reinicio.append(st.text_input(f"Correo del Revisor {i+1}:", key=f"rein_{i}"))
                         
-                        if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
+                        if st.button("Reiniciar Flujo y Generar Nuevos Enlaces", key="btn_reinicio_flujo"):
                             if not all(correos_reinicio):
                                 st.warning("Debes ingresar el correo de todos los revisores asignados.")
                             elif nuevo_archivo and nueva_obs:
-                                # ... (Código de nextcloud y pasar a histórico) ...
-                                
-                                    tokens_reinicio = []
-                                    import uuid
-                                    for correo_esp in correos_reinicio:
-                                        tok = str(uuid.uuid4())
-                                        c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) VALUES (?, ?, 'REVISOR', ?, 'PENDIENTE')", (doc_id_input, tok, correo_esp.strip().lower()))
-                                        tokens_reinicio.append(tok)
-                        
-                        if st.button("Reiniciar Flujo y Generar Nuevos Enlaces"):
-                            if nuevo_archivo and nueva_obs:
                                 marca_tiempo = datetime.now(ZONA_COL).strftime("%H%M%S")
                                 nuevo_nombre_nc = f"{doc_id_input}_v{marca_tiempo}_{nuevo_archivo.name}"
                                 
@@ -540,18 +471,15 @@ else:
                                     exito = subir_a_nextcloud(nuevo_archivo.getvalue(), nuevo_nombre_nc)
                                 
                                 if exito:
-                                    # Convertir firmas anteriores en histórico
                                     c.execute("UPDATE firmas_flujo SET decision = decision || ' (Histórico)' WHERE doc_id = ? AND decision NOT LIKE '%(Histórico)'", (doc_id_input,))
                                     
                                     tokens_reinicio = []
-                                    import uuid
-                                    for _ in range(nuevos_rev):
+                                    for correo_esp in correos_reinicio:
                                         tok = str(uuid.uuid4())
-                                        c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, decision) VALUES (?, ?, 'REVISOR', 'PENDIENTE')", (doc_id_input, tok))
+                                        c.execute("INSERT INTO firmas_flujo (doc_id, token, rol, correo_esperado, decision) VALUES (?, ?, 'REVISOR', ?, 'PENDIENTE')", (doc_id_input, tok, correo_esp.strip().lower()))
                                         tokens_reinicio.append(tok)
                                     
-                                    # Concatenamos la nueva nota utilizando la observación histórica previa (doc[4]) y usamos salto de línea HTML para ReportLab
-                                    obs_actualizada = f"{doc[4]} <br/><br/>[REINICIO {datetime.now(ZONA_COL).strftime('%d/%m/%Y')}]: {nueva_obs}"
+                                    obs_actualizada = f"{doc[4]} \n\n[REINICIO {datetime.now(ZONA_COL).strftime('%d/%m/%Y')}]: {nueva_obs}"
                                     
                                     c.execute("""UPDATE documentos 
                                                  SET estado = 'REVISION', nombre_archivo = ?, ruta_archivo = ?, 
@@ -569,29 +497,44 @@ else:
                             else:
                                 st.warning("Debes adjuntar el documento corregido y escribir una nota.")
                 else:
-                    st.error("Documento no encontrado. Verifica el ID.")                             
+                    st.error("Documento no encontrado. Verifica el ID.")
 
     elif menu == "3. Documentos Finalizados":
         st.header("Repositorio de Documentos Completados")
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("""SELECT id, nombre_archivo, ruta_archivo, fecha_creacion, nombre_elaborador 
-                     FROM documentos WHERE estado = 'COMPLETADO' ORDER BY fecha_creacion DESC""")
-        docs = c.fetchall()
+        with sqlite3.connect(DB_FILE) as conn:
+            c = conn.cursor()
+            c.execute("""SELECT id, nombre_archivo, ruta_archivo, fecha_creacion, nombre_elaborador 
+                         FROM documentos WHERE estado = 'COMPLETADO' ORDER BY fecha_creacion DESC""")
+            docs = c.fetchall()
+            
+            if docs:
+                for d in docs:
+                    with st.expander(f"📄 {d[1]} (ID: {d[0]}) - Elaborado por: {d[4]}"):
+                        st.write(f"**Fecha de inicio del flujo:** {d[3]}")
+                        nombre_final_nc = d[2].replace(".pdf", "_FINAL.pdf")
+                        st.write(f"**Nombre en Nextcloud:** `{nombre_final_nc}`")
+                        
+                        if st.button(f"Descargar de Nextcloud", key=f"btn_dl_nc_{d[0]}"):
+                            archivo_bytes = descargar_de_nextcloud(nombre_final_nc)
+                            if archivo_bytes:
+                                st.download_button("📥 Confirmar Descarga", data=archivo_bytes, file_name=nombre_final_nc, mime="application/pdf", key=f"dl_{d[0]}")
+                            else:
+                                st.error("El archivo final ya no se encuentra en Nextcloud.")
+            else:
+                st.info("Aún no hay documentos con el flujo completado.")
+
+    elif menu == "4. Respaldo de Base de Datos":
+        st.header("Descargar Base de Datos (Auditoría)")
+        st.write("Descarga el archivo SQLite actual para revisarlo con DB Browser.")
         
-        if docs:
-            for d in docs:
-                with st.expander(f"📄 {d[1]} (ID: {d[0]}) - Elaborado por: {d[4]}"):
-                    st.write(f"**Fecha de inicio del flujo:** {d[3]}")
-                    nombre_final_nc = d[2].replace(".pdf", "_FINAL.pdf")
-                    st.write(f"**Nombre en Nextcloud:** `{nombre_final_nc}`")
-                    
-                    if st.button(f"Descargar de Nextcloud", key=d[0]):
-                        archivo_bytes = descargar_de_nextcloud(nombre_final_nc)
-                        if archivo_bytes:
-                            st.download_button("📥 Confirmar Descarga", data=archivo_bytes, file_name=nombre_final_nc, mime="application/pdf", key=f"dl_{d[0]}")
-                        else:
-                            st.error("El archivo final ya no se encuentra en Nextcloud.")
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, "rb") as db_file:
+                st.download_button(
+                    label="📥 Descargar flujo_documental.db",
+                    data=db_file,
+                    file_name=f"respaldo_bd_{datetime.now(ZONA_COL).strftime('%Y%m%d_%H%M')}.db",
+                    mime="application/octet-stream",
+                    key="btn_dl_db"
+                )
         else:
-            st.info("Aún no hay documentos con el flujo completado.")
-        conn.close()
+            st.error("El archivo de base de datos no se encontró.")
