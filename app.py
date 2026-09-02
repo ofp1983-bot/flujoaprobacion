@@ -26,10 +26,10 @@ DB_FILE = "flujo_documental.db"
 ZONA_COL = timezone(timedelta(hours=-5))
 
 # CONFIGURACIÓN NEXTCLOUD
-NC_USER = "tu_usuario"
-NC_PASS = "tu_app_password" 
+NC_USER = "gdocumental@insdeportescajica.gov.co"
+NC_PASS = "7Lb2n-WdwWQ-SzM5n-JYA5J-Px5Ro" 
 # Asegúrate de usar la URL correcta para la API WebDAV
-NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/{NC_USER}/Aprobaciones"
+NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/APROBACIONES"
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 
 # URL base para los enlaces
