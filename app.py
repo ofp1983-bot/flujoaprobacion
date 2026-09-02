@@ -295,7 +295,7 @@ else:
         num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1)
         observacion = st.text_area("Nota / Observaciones (Ej: Primera versión / Ajustes realizados):")
 
-        num_revisores = st.number_input("Número de Revisores requeridos:", min_value=1, max_value=10, value=1)
+        
         
         st.write("**Correos institucionales autorizados para revisión:**")
         correos_revisores = []
