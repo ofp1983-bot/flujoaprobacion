@@ -452,7 +452,7 @@ else:
                     if doc[2] == 'REVISION' and rev_aprobados == doc[3]:
                         st.success("✅ Todos los revisores han aprobado el documento.")
                         st.subheader("Paso 2: Configurar Aprobadores")
-                        num_apr = st.number_input("Número de Aprobadores requeridos:", min_value=1, max_value=10, value=1)
+                        num_apr = st.number_input("Número de Aprobadores requeridos:", min_value=1, max_value=10, value=1, key="num_apr_conf")
                         st.write("**Correos institucionales autorizados para aprobación:**")
                         correos_aprobadores = []
                         for i in range(num_apr):
@@ -512,7 +512,7 @@ else:
                         
                         nuevo_archivo = st.file_uploader("Sube el documento corregido (PDF)", type=["pdf"])
                         nueva_obs = st.text_area("Nota sobre los ajustes realizados:")
-                        nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3])
+                        nuevos_rev = st.number_input("Número de revisores para esta nueva ronda:", min_value=1, max_value=10, value=doc[3], key="num_rev_reinicio")
                         st.write("**Correos institucionales autorizados para la nueva revisión:**")
                         correos_reinicio = []
                         for i in range(nuevos_rev):
