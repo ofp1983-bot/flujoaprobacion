@@ -30,7 +30,7 @@ ZONA_COL = timezone(timedelta(hours=-5))
 NC_USER = "gdocumental@insdeportescajica.gov.co"
 NC_PASS = "yR9pd-w5AGB-aRxCP-3ofJ4-osycR" 
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
-NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1{NC_USER}/DIRECCION/APROBACIONES"
+NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/APROBACIONES"
 
 # URL base para los enlaces (Cámbiala por la URL pública de tu app en Streamlit Cloud)
 BASE_URL = "https://tu-app-flujo.streamlit.app"
