@@ -4,4 +4,4 @@ pypdf
 requests
 pandas
 openpyxl
-import psycopg2
+psycopg2-binary
