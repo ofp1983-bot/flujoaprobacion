@@ -33,7 +33,7 @@ AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/APROBACIONES"
 
 # URL base para los enlaces (Cámbiala por la URL pública de tu app en Streamlit Cloud)
-BASE_URL = "https://tu-app-flujo.streamlit.app"
+BASE_URL = "https://flujoaprobacion.streamlit.app/"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS (POSTGRESQL)
