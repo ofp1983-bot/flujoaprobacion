@@ -27,8 +27,8 @@ DB_URL = st.secrets.get("DATABASE_URL", "postgresql://TU_USUARIO:TU_PASSWORD@TU_
 ZONA_COL = timezone(timedelta(hours=-5))
 
 # CONFIGURACIÓN NEXTCLOUD
-NC_USER = "gdocumental@insdeportescajica.gov.co"
-NC_PASS = "yR9pd-w5AGB-aRxCP-3ofJ4-osycR" 
+NC_USER = st.secrets.get("NC_USER")
+NC_PASS = st.secrets.get("NC_PASS") 
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
 NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/APROBACIONES"
 
