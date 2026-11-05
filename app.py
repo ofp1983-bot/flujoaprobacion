@@ -20,20 +20,17 @@ from pypdf import PdfWriter, PdfReader
 # ==========================================
 # CONFIGURACIÓN GENERAL Y CREDENCIALES
 # ==========================================
-# En Streamlit Cloud, guarda esta URL en la sección "Secrets" y llámala con st.secrets
-# Ejemplo local: "postgresql://usuario:password@host:5432/nombre_bd"
 DB_URL = st.secrets.get("DATABASE_URL", "postgresql://TU_USUARIO:TU_PASSWORD@TU_HOST:5432/TU_BD")
-
 ZONA_COL = timezone(timedelta(hours=-5))
 
 # CONFIGURACIÓN NEXTCLOUD
-NC_USER = st.secrets.get("NC_USER")
-NC_PASS = st.secrets.get("NC_PASS") 
+NC_USER = "tu_usuario"
+NC_PASS = "tu_app_password" 
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
-NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/APROBACIONES"
+NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/{NC_USER}/Aprobaciones"
 
-# URL base para los enlaces (Cámbiala por la URL pública de tu app en Streamlit Cloud)
-BASE_URL = "https://flujoaprobacion.streamlit.app/"
+# URL base para los enlaces
+BASE_URL = "https://tu-app-flujo.streamlit.app"
 
 # ==========================================
 # FUNCIONES DE BASE DE DATOS (POSTGRESQL)
@@ -54,7 +51,6 @@ def init_db():
                             correo_elaborador TEXT, 
                             cargo_elaborador TEXT)''')
             
-            # Nota: En PostgreSQL se usa SERIAL en lugar de AUTOINCREMENT
             c.execute('''CREATE TABLE IF NOT EXISTS firmas_flujo (
                             id SERIAL PRIMARY KEY, 
                             doc_id TEXT, 
@@ -197,6 +193,17 @@ if token:
                 nota_formateada = doc[2].replace('\n', '\n\n')
                 st.write(f"**Notas del flujo:**\n{nota_formateada}")
 
+                # --- NUEVA MEJORA: Mostrar historial y seguimiento previo en la pantalla del aprobador/revisor ---
+                c.execute("SELECT rol, nombre, cargo, decision, observacion, fecha_hora FROM firmas_flujo WHERE doc_id = %s AND decision != 'PENDIENTE'", (doc_id,))
+                firmas_previas = c.fetchall()
+                if firmas_previas:
+                    st.write("---")
+                    st.subheader("📋 Historial y Seguimiento del Documento")
+                    df_historial_token = pd.DataFrame(firmas_previas, columns=["Rol", "Nombre", "Cargo", "Decisión", "Observación", "Fecha y Hora"])
+                    df_historial_token["Observación"] = df_historial_token["Observación"].fillna("Sin observaciones")
+                    st.dataframe(df_historial_token, use_container_width=True, hide_index=True)
+                # -------------------------------------------------------------------------------------------------
+
                 nombre_nextcloud = doc[1]
                 pdf_bytes = descargar_de_nextcloud(nombre_nextcloud)
 
@@ -239,7 +246,7 @@ if token:
 
 else:
     st.sidebar.title("Menú de Gestión")
-    menu = st.sidebar.radio("Opciones", ["1. Iniciar Nuevo Flujo", "2. Estado y Aprobadores", "3. Documentos Finalizados"])
+    menu = st.sidebar.radio("Opciones", ["1. Iniciar Nuevo Flujo", "2. Estado y Aprobadores", "3. Documentos Finalizados", "4. Respaldo de Base de Datos"])
 
     if menu == "1. Iniciar Nuevo Flujo":
         st.header("Carga de Documento e Inicio de Flujo")
@@ -478,3 +485,7 @@ else:
                                     st.error("El archivo final ya no está en Nextcloud.")
                 else:
                     st.info("Aún no hay documentos completados.")
+                    
+    elif menu == "4. Respaldo de Base de Datos":
+        st.header("Gestión de Base de Datos")
+        st.info("Al utilizar PostgreSQL en la nube, los datos están respaldados de forma persistente y segura en el servidor.")
