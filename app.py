@@ -27,7 +27,7 @@ ZONA_COL = timezone(timedelta(hours=-5))
 NC_USER = st.secrets.get("NC_USER")
 NC_PASS = st.secrets.get("NC_PASS")
 AUTH = HTTPBasicAuth(NC_USER, NC_PASS)
-NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/{NC_USER}/Aprobaciones"
+NC_URL = f"https://cloud.insdeportescajica.gov.co/remote.php/dav/files/19C87196-1654-4F6B-A835-7255DBC00FF1/DIRECCION/APROBACIONES"
 
 # URL base para los enlaces
 BASE_URL = "https://tu-app-flujo.streamlit.app"
